@@ -8,6 +8,8 @@ pub struct Root {
     pub fabric_version: String,
     #[serde(rename = "hyclyint_version")]
     pub hyclyint_version: String,
+    #[serde(rename = "hyclyint_launcher_version")]
+    pub hyclyint_launcher_version: String,
     #[serde(rename = "required_mods")]
     pub required_mods: Vec<RequiredMod>,
 }

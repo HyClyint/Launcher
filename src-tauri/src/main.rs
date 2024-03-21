@@ -26,9 +26,11 @@ use core::downloader;
 use core::launcher;
 use core::directory;
 
+use tauri::AppHandle;
+
 #[tauri::command]
-async fn initialize() -> Result<(), String> {
-    downloader::init().await;
+async fn initialize(app: AppHandle) -> Result<(), String> {
+    downloader::init(&app).await;
 
     Ok(())
 }

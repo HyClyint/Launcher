@@ -21,7 +21,7 @@ const FABRIC_META_DOWNLOAD_URL: &str = "https://meta.fabricmc.net/v2/versions/lo
 const HYCLYINT_URL: &str = "https://raw.githubusercontent.com/HyClyint/launcher-data/main/";
 const MODRINTH_API: &str = "https://api.modrinth.com/v2/";
 
-pub async fn update_hyclyint_config() {
+pub async fn update_hyclyint_config(app: &AppHandle) {
     let hyclyint_config_url = format!("{}config.json", HYCLYINT_URL);
 
     let response = reqwest::get(hyclyint_config_url)
@@ -34,13 +34,20 @@ pub async fn update_hyclyint_config() {
 
     let mut config = config::SHARED_CONFIG.lock().await;
 
-    if config.fabric_version != hyclyint_config.fabric_version  {
+    if config.fabric_version != hyclyint_config.fabric_version {
         fs::remove_dir_all(directory::get_versions_directory()).unwrap();
         fs::remove_dir_all(directory::get_libraries_directory()).unwrap();
     }
 
     if config.hyclyint_version != hyclyint_config.hyclyint_version {
         fs::remove_dir_all(directory::get_mods_directory()).unwrap();
+    }
+
+    let version_info = app.package_info().version.clone();
+    let version_string = format!("{}.{}.{}-{}", version_info.major, version_info.minor, version_info.patch, version_info.pre);
+
+    if version_string != hyclyint_config.hyclyint_launcher_version {
+        app.exit(0); // FOR NOW IDK HOW TO OPEN A MESSAGE BOX
     }
 
     config.fabric_version = hyclyint_config.fabric_version;
@@ -631,9 +638,9 @@ pub async fn download_runtime_gamma(app: &AppHandle) {
     }
 }
 
-pub async fn init() {
+pub async fn init(app: &AppHandle) {
     // Update the config
-    update_hyclyint_config().await;
+    update_hyclyint_config(app).await;
 
     // check if the current token is valid
     let mut config = config::SHARED_CONFIG.lock().await;
