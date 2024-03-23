@@ -6,8 +6,8 @@
         "distDir": "../dist"
     },
     "package": {
-        "productName": "HyClyint",
-        "version": "0.1.1-BETA"
+        "productName": "HyClyint Beta",
+        "version": "0.1.1"
     },
     "tauri": {
         "allowlist": {

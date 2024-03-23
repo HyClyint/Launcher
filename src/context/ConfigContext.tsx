@@ -1,4 +1,6 @@
 import Loading from '@/components/Loading';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { tauri } from '@tauri-apps/api';
 import { listen } from '@tauri-apps/api/event';
 import { createContext, useContext, useEffect, useState } from 'react';
@@ -27,12 +29,13 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
         selected_version: '1.20.4',
     });
     const [loading, setLoading] = useState(true);
+    const [updateAvailable, setUpdateAvailable] = useState(false);
+    const [updateInfo, setUpdateInfo] = useState<String>('');
     const [displayLoading, setDisplayLoading] = useState(true);
 
     useEffect(() => {
         async function loadConfig() {
             const config: Config = await tauri.invoke('get_config');
-            console.log(config);
             setConfig(config);
 
             await tauri.invoke('initialize');
@@ -44,10 +47,17 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
             setConfig(event.payload);
             console.log('config updated');
         });
+
+        const cancelUpdate = listen<String>('update-available', (event) => {
+            setUpdateAvailable(true);
+            setUpdateInfo(event.payload);
+        });
+
         loadConfig();
 
         return () => {
             cancel.then((cancel) => cancel());
+            cancelUpdate.then((cancel) => cancel());
         };
     }, []);
 
@@ -64,7 +74,26 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
 
     return (
         <ConfigContext.Provider value={{ config, setConfig }}>
-            {children}
+            {
+                <>
+                    {children}
+                    <Dialog open={updateAvailable}>
+                        <DialogContent>
+                            <h1 className='scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl text-center'>Update Available</h1>
+                            <p className='leading-7 [&:not(:first-child)]:mt-6'>
+                                A new update is available. Please join the discord server for more information.
+                            </p>
+                            <p className='leading-7 [&:not(:first-child)]:mt-6'>{updateInfo}</p>
+
+                            <Button asChild>
+                                <a href='https://discord.gg/99zb4wvxzs' target='_blank' rel='noreferrer'>
+                                    Join Discord
+                                </a>
+                            </Button>
+                        </DialogContent>
+                    </Dialog>
+                </>
+            }
             {displayLoading && <Loading loading={loading} />}
         </ConfigContext.Provider>
     );

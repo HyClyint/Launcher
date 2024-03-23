@@ -1,4 +1,4 @@
-use std::{fs, os::windows::process::CommandExt};
+use std::{fs, os};
 
 use tauri::{AppHandle, Manager, Window};
 
@@ -68,62 +68,66 @@ pub async fn launch_client(app: AppHandle, window: Window) -> Result<(), String>
     println!("{}", classpath);
 
     let process = match std::env::consts::OS {
-        "windows" => std::process::Command::new(java_path)
-            .arg("-Xms2048M")
-            .arg("-Xmx2048M")
-            .arg("-XX:+UnlockExperimentalVMOptions")
-            .arg("-XX:+UseG1GC")
-            .arg("-XX:G1ReservePercent=20")
-            .arg("-XX:G1NewSizePercent=20")
-            .arg("-XX:MaxGCPauseMillis=50")
-            .arg("-XX:G1HeapRegionSize=32M")
-            .arg("-Dlog4j2.formatMsgNoLookups=true")
-            .arg("-DFabricMcEmu=net.minecraft.client.main.Main")
-            .arg("-XX:HeapDumpPath=MojangTricksIntelDriversForPerformance_javaw.exe_minecraft.exe.heapdump")
-            .arg(format!("-Djava.library.path={}", temp_path.to_str().unwrap()))
-            .arg(format!("-Djna.tmpdir={}", temp_path.to_str().unwrap()))
-            .arg(format!("-Dorg.lwjgl.system.SharedLibraryExtractPath={}", temp_path.to_str().unwrap()))
-            .arg(format!("-Dio.netty.native.workdir={}", temp_path.to_str().unwrap()))
-            .arg("-Dminecraft.launcher.brand=hylauncher")
-            .arg("-Dminecraft.launcher.version=1.0.0")
-            .arg("-cp")
-            .arg(classpath)
-            .arg("net.fabricmc.loader.impl.launch.knot.KnotClient")
-            .arg("--username")
-            .arg(config.username.clone())
-            .arg("--version")
-            .arg(selected_version.clone())
-            .arg("--gameDir")
-            .arg(directory::get_hyclyint_directory().to_str().unwrap())
-            .arg("--assetsDir")
-            .arg(directory::get_assets_directory().to_str().unwrap())
-            .arg("--assetIndex")
-            .arg(version_manifest.asset_index.id.clone())
-            .arg("--uuid")
-            .arg(match config.uuid.is_empty() {
-                true => uuid::Uuid::new_v4().to_string(),
-                false => config.uuid.clone(),
-            })
-            .arg("--accessToken")
-            .arg(match config.minecraft_token.is_empty() {
-                true => "aeef7bc935f9420eb6314dea7ad7e1e5".to_string(),
-                false => config.minecraft_token.clone(),
-            })
-            .arg("--xuid")
-            .arg(match config.xbox_token.clone().is_empty() {
-                true => "0".to_string(),
-                false => config.xbox_token.clone(),
-            })
-            .arg("--userType")
-            .arg(match config.minecraft_token.is_empty() {
-                true => "mojang",
-                false => "microsoft",
-            })
-            .arg("--versionType")
-            .arg("release")
-            .current_dir(directory::get_hyclyint_directory())
-            .creation_flags(0x08000000)
-            .spawn(),
+        "windows" => {
+            use os::windows::process::CommandExt;
+
+            std::process::Command::new(java_path)
+                .arg("-Xms2048M")
+                .arg("-Xmx2048M")
+                .arg("-XX:+UnlockExperimentalVMOptions")
+                .arg("-XX:+UseG1GC")
+                .arg("-XX:G1ReservePercent=20")
+                .arg("-XX:G1NewSizePercent=20")
+                .arg("-XX:MaxGCPauseMillis=50")
+                .arg("-XX:G1HeapRegionSize=32M")
+                .arg("-Dlog4j2.formatMsgNoLookups=true")
+                .arg("-DFabricMcEmu=net.minecraft.client.main.Main")
+                .arg("-XX:HeapDumpPath=MojangTricksIntelDriversForPerformance_javaw.exe_minecraft.exe.heapdump")
+                .arg(format!("-Djava.library.path={}", temp_path.to_str().unwrap()))
+                .arg(format!("-Djna.tmpdir={}", temp_path.to_str().unwrap()))
+                .arg(format!("-Dorg.lwjgl.system.SharedLibraryExtractPath={}", temp_path.to_str().unwrap()))
+                .arg(format!("-Dio.netty.native.workdir={}", temp_path.to_str().unwrap()))
+                .arg("-Dminecraft.launcher.brand=hylauncher")
+                .arg("-Dminecraft.launcher.version=1.0.0")
+                .arg("-cp")
+                .arg(classpath)
+                .arg("net.fabricmc.loader.impl.launch.knot.KnotClient")
+                .arg("--username")
+                .arg(config.username.clone())
+                .arg("--version")
+                .arg(selected_version.clone())
+                .arg("--gameDir")
+                .arg(directory::get_hyclyint_directory().to_str().unwrap())
+                .arg("--assetsDir")
+                .arg(directory::get_assets_directory().to_str().unwrap())
+                .arg("--assetIndex")
+                .arg(version_manifest.asset_index.id.clone())
+                .arg("--uuid")
+                .arg(match config.uuid.is_empty() {
+                    true => uuid::Uuid::new_v4().to_string(),
+                    false => config.uuid.clone(),
+                })
+                .arg("--accessToken")
+                .arg(match config.minecraft_token.is_empty() {
+                    true => "aeef7bc935f9420eb6314dea7ad7e1e5".to_string(),
+                    false => config.minecraft_token.clone(),
+                })
+                .arg("--xuid")
+                .arg(match config.xbox_token.clone().is_empty() {
+                    true => "0".to_string(),
+                    false => config.xbox_token.clone(),
+                })
+                .arg("--userType")
+                .arg(match config.minecraft_token.is_empty() {
+                    true => "mojang",
+                    false => "microsoft",
+                })
+                .arg("--versionType")
+                .arg("release")
+                .current_dir(directory::get_hyclyint_directory())
+                .creation_flags(0x08000000)
+                .spawn()
+        },
 
         _ => std::process::Command::new(java_path)
             .arg("-Xms2048M")
