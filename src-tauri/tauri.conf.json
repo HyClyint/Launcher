@@ -31,7 +31,7 @@
             "active": true,
             "targets": "all",
             "identifier": "me.nichunaizam.hyclyint.launcher",
-            "icon": ["icons/128x128@2x.png", "icons/icon.ico"]
+            "icon": ["icons/128x128@2x.png", "icons/icon.ico", "icons/icon.icns"]
         }
     }
 }
