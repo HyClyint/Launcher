@@ -8,7 +8,6 @@ pub fn get_jars_in_directory(directory: &PathBuf) -> Vec<PathBuf> {
         let path = entry.path();
         if path.is_file() {
             if path.extension().unwrap() == "jar" {
-                println!("Found library: {}", path.to_str().unwrap());
                 jars.push(path);
             }
         } else {

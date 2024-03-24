@@ -607,9 +607,11 @@ pub async fn download_minecraft_jar(
     Ok(())
 }
 
-pub async fn download_runtime_gamma(app: &AppHandle) -> Result<(), String> {
+pub async fn download_runtime_gamma(app: &AppHandle) -> Result<String, String> {
     let runtime_directory = directory::get_runtime_directory();
     let runtime_meta_path = runtime_directory.join("runtime_meta.json");
+
+    let mut java_executable: String = "".to_string();
 
     let runtime_meta = fs::read_to_string(runtime_meta_path).unwrap();
     let runtime_meta: mojang_runtime_all_json::Root = serde_json::from_str(&runtime_meta).unwrap();
@@ -726,6 +728,10 @@ pub async fn download_runtime_gamma(app: &AppHandle) -> Result<(), String> {
 
             file_path = file_path.join(file_name);
 
+            if file_name.ends_with("java.exe") || file_name.ends_with("java") {
+                java_executable = file_path.to_str().unwrap().to_string();
+            }
+
             if !file_path.exists() {
                 println!("Downloading file: {}", path);
 
@@ -773,7 +779,7 @@ pub async fn download_runtime_gamma(app: &AppHandle) -> Result<(), String> {
         println!("Downloaded {}/{} files", i, length);
     }
 
-    Ok(())
+    Ok(java_executable)
 }
 
 pub async fn init(app: &AppHandle) {

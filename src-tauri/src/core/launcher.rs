@@ -11,7 +11,7 @@ use crate::{
 
 #[cfg(target_os = "windows")]
 async fn get_process(
-    java_path: &PathBuf,
+    java_path: &String,
     classpath: &String,
     temp_path: &PathBuf,
     selected_version: &String,
@@ -80,12 +80,12 @@ async fn get_process(
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 async fn get_process(
-    java_path: &PathBuf,
+    java_path: &String,
     classpath: &String,
     temp_path: &PathBuf,
     selected_version: &String,
     config: &Config,
-    version_manifest: &minecraft_version_json::Root
+    version_manifest: &minecraft_version_json::Root,
 ) -> std::io::Result<std::process::Child> {
     std::process::Command::new(java_path)
         .arg("-Xms2048M")
@@ -148,23 +148,30 @@ async fn get_process(
 pub async fn launch_client(app: AppHandle, window: Window) -> Result<(), String> {
     let config = config::SHARED_CONFIG.lock().await;
     let selected_version = config.selected_version.clone();
+    let java_path: String;
 
     println!("Launching version: {}", selected_version);
 
     println!("Downloading runtime!");
     match downloader::download_runtime_gamma(&app).await {
-        Ok(_) => {}
+        Ok(path) => {
+            java_path = path;
+        }
         Err(_) => {
-            app.emit_all("update-failed", "Failed to download runtime").unwrap();
+            app.emit_all("update-failed", "Failed to download runtime")
+                .unwrap();
             return Err("Failed to download runtime".to_string());
         }
     };
+
+    println!("Java executable at {}", java_path);
 
     println!("Downloading assets!");
     match downloader::download_assets_minecraft(&config, &app).await {
         Ok(_) => {}
         Err(_) => {
-            app.emit_all("update-failed", "Failed to download assets").unwrap();
+            app.emit_all("update-failed", "Failed to download assets")
+                .unwrap();
             return Err("Failed to download assets".to_string());
         }
     };
@@ -173,7 +180,8 @@ pub async fn launch_client(app: AppHandle, window: Window) -> Result<(), String>
     match downloader::download_libraries(&config, &app).await {
         Ok(_) => {}
         Err(_) => {
-            app.emit_all("update-failed", "Failed to download libraries").unwrap();
+            app.emit_all("update-failed", "Failed to download libraries")
+                .unwrap();
             return Err("Failed to download libraries".to_string());
         }
     };
@@ -181,35 +189,34 @@ pub async fn launch_client(app: AppHandle, window: Window) -> Result<(), String>
     match downloader::download_libraries_fabric(&config, &app).await {
         Ok(_) => {}
         Err(_) => {
-            app.emit_all("update-failed", "Failed to download fabric libraries").unwrap();
+            app.emit_all("update-failed", "Failed to download fabric libraries")
+                .unwrap();
             return Err("Failed to download fabric libraries".to_string());
         }
-    
     };
 
     println!("Downloading mods!");
     match downloader::download_mods(&config, &app).await {
         Ok(_) => {}
         Err(_) => {
-            app.emit_all("update-failed", "Failed to download mods").unwrap();
+            app.emit_all("update-failed", "Failed to download mods")
+                .unwrap();
             return Err("Failed to download mods".to_string());
         }
-    
     };
 
     println!("Downloading jar!");
     match downloader::download_minecraft_jar(&config, &app).await {
         Ok(_) => {}
         Err(_) => {
-            app.emit_all("update-failed", "Failed to download jar").unwrap();
+            app.emit_all("update-failed", "Failed to download jar")
+                .unwrap();
             return Err("Failed to download jar".to_string());
         }
     };
 
     app.emit_all("update_progress", "Launching").unwrap();
     println!("Launching Minecraft!");
-    let jre_path = directory::get_runtime_directory().join("jre");
-    let java_path = jre_path.join("bin").join("java");
 
     let temp_path = std::env::temp_dir().join("hylauncher").join("natives");
     fs::create_dir_all(temp_path.clone()).unwrap();
@@ -248,7 +255,7 @@ pub async fn launch_client(app: AppHandle, window: Window) -> Result<(), String>
         &temp_path,
         &selected_version,
         &config,
-        &version_manifest
+        &version_manifest,
     )
     .await;
 
