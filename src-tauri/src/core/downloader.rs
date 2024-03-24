@@ -44,7 +44,10 @@ pub async fn update_hyclyint_config(app: &AppHandle) {
     }
 
     let version_info = app.package_info().version.clone();
-    let version_string = format!("{}.{}.{}", version_info.major, version_info.minor, version_info.patch);
+    let version_string = format!(
+        "{}.{}.{}",
+        version_info.major, version_info.minor, version_info.patch
+    );
 
     if version_string != hyclyint_config.hyclyint_launcher_version {
         app.emit_all("update-available", format!("Current launcher version: {} is outdated! Please update to version: {} to continue using HyClyint!", version_string, hyclyint_config.hyclyint_launcher_version)).unwrap();
@@ -576,7 +579,7 @@ pub async fn download_runtime_gamma(app: &AppHandle) {
             let files = selected_runtime_manifest.files.clone();
             let (path, file) = files.into_iter().nth(i).unwrap();
 
-            if file.root_type.unwrap() == "directory" {
+            if file.root_type.clone().unwrap() == "directory" {
                 let mut file_path = runtime_download_dir.clone();
                 let parts = path.split('/').collect::<Vec<&str>>();
                 for part in parts {
@@ -587,6 +590,11 @@ pub async fn download_runtime_gamma(app: &AppHandle) {
                     }
                 }
 
+                i += 1;
+                continue;
+            }
+
+            if file.root_type.unwrap() == "link" {
                 i += 1;
                 continue;
             }
