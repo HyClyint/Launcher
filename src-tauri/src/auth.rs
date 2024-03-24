@@ -75,6 +75,22 @@ pub async fn logout(app: AppHandle) {
     config.save_config().unwrap();
 }
 
+pub async fn get_minecraft_token(xbox_token: &String) -> Option<auth::MinecraftTokenResponse> {
+    let client = reqwest::Client::new();
+
+    let response = auth::get_minecraft_token(&client, &xbox_token).await;
+
+    match response {
+        Ok(token) => {
+            return Some(token);
+        }
+        Err(e) => {
+            println!("Error getting Minecraft token: {}", e);
+            return None;
+        }
+    }
+}
+
 pub async fn get_minecraft_profile(token: &String) -> Option<auth::ProfileResponse> {
     let client = reqwest::Client::new();
 

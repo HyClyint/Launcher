@@ -24,8 +24,7 @@ const MODRINTH_API: &str = "https://api.modrinth.com/v2/";
 pub async fn update_hyclyint_config(app: &AppHandle) -> Result<(), String> {
     let hyclyint_config_url = format!("{}config.json", HYCLYINT_URL);
 
-    let response = match reqwest::get(hyclyint_config_url)
-        .await {
+    let response = match reqwest::get(hyclyint_config_url).await {
         Ok(response) => response,
         Err(_) => {
             println!("Failed to download HyClyint config");
@@ -117,10 +116,7 @@ pub async fn download_minecraft_version(config: &config::Config) -> Result<(), S
     let version_directory = directory::get_version_directory(&selected_version.id);
 
     let client = reqwest::Client::new();
-    let response = match client
-        .get(&selected_version.url)
-        .send()
-        .await {
+    let response = match client.get(&selected_version.url).send().await {
         Ok(response) => response,
         Err(_) => {
             println!("Failed to download version: {}", selected_version.id);
@@ -139,8 +135,7 @@ pub async fn download_runtime_meta() -> Result<(), String> {
     let runtime_directory = directory::get_runtime_directory();
     let runtime_meta_path = runtime_directory.join("runtime_meta.json");
 
-    let response = match reqwest::get(MINECRAFT_RUNTIME_META_DOWNLOAD_URL)
-        .await {
+    let response = match reqwest::get(MINECRAFT_RUNTIME_META_DOWNLOAD_URL).await {
         Ok(response) => response,
         Err(_) => {
             println!("Failed to download runtime meta");
@@ -154,7 +149,7 @@ pub async fn download_runtime_meta() -> Result<(), String> {
     Ok(())
 }
 
-pub async fn download_fabric_version(config: &config::Config) -> Result<(), String>{
+pub async fn download_fabric_version(config: &config::Config) -> Result<(), String> {
     let versions_directory = directory::get_versions_directory();
     let fabric_meta_path = versions_directory.join("fabric_meta.json");
 
@@ -180,7 +175,10 @@ pub async fn download_fabric_version(config: &config::Config) -> Result<(), Stri
     let response = match client.get(&url).send().await {
         Ok(response) => response,
         Err(_) => {
-            println!("Failed to download fabric version: {}", selected_fabric_version.version);
+            println!(
+                "Failed to download fabric version: {}",
+                selected_fabric_version.version
+            );
             return Err("Failed to download fabric version".to_string());
         }
     };
@@ -197,8 +195,7 @@ pub async fn download_mods(config: &config::Config, app: &AppHandle) -> Result<(
 
     let mods_directory = directory::get_mods_directory();
 
-    let response = match reqwest::get(format!("{}{}", HYCLYINT_URL, "config.json"))
-        .await {
+    let response = match reqwest::get(format!("{}{}", HYCLYINT_URL, "config.json")).await {
         Ok(response) => response,
         Err(_) => {
             println!("Failed to download HyClyint config");
@@ -245,10 +242,14 @@ pub async fn download_mods(config: &config::Config, app: &AppHandle) -> Result<(
             "{}project/{}/version",
             MODRINTH_API, required_mod.name
         ))
-        .await {
+        .await
+        {
             Ok(response) => response,
             Err(_) => {
-                println!("Failed to download mod: {}. {}/{}", required_mod.name, i, length);
+                println!(
+                    "Failed to download mod: {}. {}/{}",
+                    required_mod.name, i, length
+                );
                 return Err("Failed to download mod info".to_string());
             }
         };
@@ -281,7 +282,10 @@ pub async fn download_mods(config: &config::Config, app: &AppHandle) -> Result<(
         let response = match reqwest::get(mod_url).await {
             Ok(response) => response,
             Err(_) => {
-                println!("Failed to download mod: {}. {}/{}", required_mod.name, i, length);
+                println!(
+                    "Failed to download mod: {}. {}/{}",
+                    required_mod.name, i, length
+                );
                 return Err("Failed to download mod".to_string());
             }
         };
@@ -778,15 +782,38 @@ pub async fn init(app: &AppHandle) {
         Ok(_) => {}
         Err(e) => {
             println!("Error: {}", e);
-            app.emit_all("update-failed", "Failed to update HyClyint config").unwrap();
+            app.emit_all("update-failed", "Failed to update HyClyint config")
+                .unwrap();
             return;
         }
     };
 
     // check if the current token is valid
     let mut config = config::SHARED_CONFIG.lock().await;
-    if config.is_logged_in && !config.minecraft_token.is_empty() {
-        let profile = auth::get_minecraft_profile(&config.minecraft_token).await;
+    if config.is_logged_in && (!config.minecraft_token.is_empty() || !config.xbox_token.is_empty())
+    {
+        let profile;
+
+        if !config.minecraft_token.is_empty() {
+            let token = config.minecraft_token.clone();
+            profile = auth::get_minecraft_profile(&token).await;
+        } else {
+            let token = config.xbox_token.clone();
+            match auth::get_minecraft_token(&token).await {
+                Some(token) => {
+                    profile = auth::get_minecraft_profile(&token.minecraft_access_token).await;
+                }
+                None => {
+                    config.is_logged_in = false;
+                    config.username = "".to_string();
+                    config.uuid = "".to_string();
+                    config.minecraft_token = "".to_string();
+                    config.xbox_token = "".to_string();
+                    config.save_config().unwrap();
+                    return;
+                }
+            };
+        }
 
         if profile.is_none() {
             config.is_logged_in = false;
@@ -817,7 +844,11 @@ pub async fn init(app: &AppHandle) {
     match download_minecraft_version_manifest().await {
         Ok(_) => {}
         Err(_) => {
-            app.emit_all("update-failed", "Failed to update Minecraft version manifest").unwrap();
+            app.emit_all(
+                "update-failed",
+                "Failed to update Minecraft version manifest",
+            )
+            .unwrap();
             return;
         }
     };
@@ -825,7 +856,8 @@ pub async fn init(app: &AppHandle) {
     match download_fabric_meta().await {
         Ok(_) => {}
         Err(_) => {
-            app.emit_all("update-failed", "Failed to update Fabric meta").unwrap();
+            app.emit_all("update-failed", "Failed to update Fabric meta")
+                .unwrap();
             return;
         }
     };
@@ -833,7 +865,8 @@ pub async fn init(app: &AppHandle) {
     match download_minecraft_version(&config).await {
         Ok(_) => {}
         Err(_) => {
-            app.emit_all("update-failed", "Failed to update Minecraft version").unwrap();
+            app.emit_all("update-failed", "Failed to update Minecraft version")
+                .unwrap();
             return;
         }
     };
@@ -841,7 +874,8 @@ pub async fn init(app: &AppHandle) {
     match download_fabric_version(&config).await {
         Ok(_) => {}
         Err(_) => {
-            app.emit_all("update-failed", "Failed to update Fabric version").unwrap();
+            app.emit_all("update-failed", "Failed to update Fabric version")
+                .unwrap();
             return;
         }
     };
@@ -849,7 +883,8 @@ pub async fn init(app: &AppHandle) {
     match download_runtime_meta().await {
         Ok(_) => {}
         Err(_) => {
-            app.emit_all("update-failed", "Failed to update runtime meta").unwrap();
+            app.emit_all("update-failed", "Failed to update runtime meta")
+                .unwrap();
             return;
         }
     };
