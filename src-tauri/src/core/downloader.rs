@@ -21,15 +21,19 @@ const FABRIC_META_DOWNLOAD_URL: &str = "https://meta.fabricmc.net/v2/versions/lo
 const HYCLYINT_URL: &str = "https://raw.githubusercontent.com/HyClyint/launcher-data/main/";
 const MODRINTH_API: &str = "https://api.modrinth.com/v2/";
 
-pub async fn update_hyclyint_config(app: &AppHandle) {
+pub async fn update_hyclyint_config(app: &AppHandle) -> Result<(), String> {
     let hyclyint_config_url = format!("{}config.json", HYCLYINT_URL);
 
-    let response = reqwest::get(hyclyint_config_url)
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
+    let response = match reqwest::get(hyclyint_config_url)
+        .await {
+        Ok(response) => response,
+        Err(_) => {
+            println!("Failed to download HyClyint config");
+            return Err("Failed to download HyClyint config".to_string());
+        }
+    };
+
+    let response = response.text().await.unwrap();
     let hyclyint_config: hyclyint_config::Root = serde_json::from_str(&response).unwrap();
 
     let mut config = config::SHARED_CONFIG.lock().await;
@@ -57,29 +61,47 @@ pub async fn update_hyclyint_config(app: &AppHandle) {
     config.hyclyint_version = hyclyint_config.hyclyint_version;
 
     config.save_config().unwrap();
+
+    Ok(())
 }
 
-pub async fn download_minecraft_version_manifest() {
+pub async fn download_minecraft_version_manifest() -> Result<(), String> {
     let versions_path = directory::get_versions_directory();
     let version_manifest_path = versions_path.join("version_manifest.json");
 
-    let response = reqwest::get(MINECRAFT_VERSION_MANIFEST_URL).await.unwrap();
-    let version_manifest = response.text().await.unwrap();
+    let response = match reqwest::get(MINECRAFT_VERSION_MANIFEST_URL).await {
+        Ok(response) => response,
+        Err(_) => {
+            println!("Failed to download version manifest");
+            return Err("Failed to download version manifest".to_string());
+        }
+    };
 
+    let version_manifest = response.text().await.unwrap();
     fs::write(version_manifest_path, version_manifest).unwrap();
+
+    Ok(())
 }
 
-pub async fn download_fabric_meta() {
+pub async fn download_fabric_meta() -> Result<(), String> {
     let versions_path = directory::get_versions_directory();
     let fabric_meta_path = versions_path.join("fabric_meta.json");
 
-    let response = reqwest::get(FABRIC_META_DOWNLOAD_URL).await.unwrap();
-    let fabric_meta = response.text().await.unwrap();
+    let response = match reqwest::get(FABRIC_META_DOWNLOAD_URL).await {
+        Ok(response) => response,
+        Err(_) => {
+            println!("Failed to download fabric meta");
+            return Err("Failed to download fabric meta".to_string());
+        }
+    };
 
+    let fabric_meta = response.text().await.unwrap();
     fs::write(fabric_meta_path, fabric_meta).unwrap();
+
+    Ok(())
 }
 
-pub async fn download_minecraft_version(config: &config::Config) {
+pub async fn download_minecraft_version(config: &config::Config) -> Result<(), String> {
     let versions_directory = directory::get_versions_directory();
     let version_manifest_path = versions_directory.join("version_manifest.json");
     let version_manifest = fs::read_to_string(version_manifest_path).unwrap();
@@ -95,32 +117,44 @@ pub async fn download_minecraft_version(config: &config::Config) {
     let version_directory = directory::get_version_directory(&selected_version.id);
 
     let client = reqwest::Client::new();
-    let response = client
+    let response = match client
         .get(&selected_version.url)
         .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
+        .await {
+        Ok(response) => response,
+        Err(_) => {
+            println!("Failed to download version: {}", selected_version.id);
+            return Err("Failed to download version".to_string());
+        }
+    };
 
+    let response = response.text().await.unwrap();
     let version_json_path = version_directory.join(format!("{}.json", selected_version.id));
     fs::write(version_json_path, response).unwrap();
+
+    Ok(())
 }
 
-pub async fn download_runtime_meta() {
+pub async fn download_runtime_meta() -> Result<(), String> {
     let runtime_directory = directory::get_runtime_directory();
     let runtime_meta_path = runtime_directory.join("runtime_meta.json");
 
-    let response = reqwest::get(MINECRAFT_RUNTIME_META_DOWNLOAD_URL)
-        .await
-        .unwrap();
-    let runtime_meta = response.text().await.unwrap();
+    let response = match reqwest::get(MINECRAFT_RUNTIME_META_DOWNLOAD_URL)
+        .await {
+        Ok(response) => response,
+        Err(_) => {
+            println!("Failed to download runtime meta");
+            return Err("Failed to download runtime meta".to_string());
+        }
+    };
 
+    let runtime_meta = response.text().await.unwrap();
     fs::write(runtime_meta_path, runtime_meta).unwrap();
+
+    Ok(())
 }
 
-pub async fn download_fabric_version(config: &config::Config) {
+pub async fn download_fabric_version(config: &config::Config) -> Result<(), String>{
     let versions_directory = directory::get_versions_directory();
     let fabric_meta_path = versions_directory.join("fabric_meta.json");
 
@@ -143,24 +177,36 @@ pub async fn download_fabric_version(config: &config::Config) {
     );
 
     let client = reqwest::Client::new();
-    let response = client.get(&url).send().await.unwrap().text().await.unwrap();
+    let response = match client.get(&url).send().await {
+        Ok(response) => response,
+        Err(_) => {
+            println!("Failed to download fabric version: {}", selected_fabric_version.version);
+            return Err("Failed to download fabric version".to_string());
+        }
+    };
 
+    let response = response.text().await.unwrap();
     let version_json_path = version_directory.join(format!("{}-fabric.json", selected_version));
     fs::write(version_json_path, response).unwrap();
+
+    Ok(())
 }
 
-pub async fn download_mods(config: &config::Config, app: &AppHandle) {
+pub async fn download_mods(config: &config::Config, app: &AppHandle) -> Result<(), String> {
     println!("Downloading mods");
 
     let mods_directory = directory::get_mods_directory();
 
-    let response = reqwest::get(format!("{}{}", HYCLYINT_URL, "config.json"))
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
+    let response = match reqwest::get(format!("{}{}", HYCLYINT_URL, "config.json"))
+        .await {
+        Ok(response) => response,
+        Err(_) => {
+            println!("Failed to download HyClyint config");
+            return Err("Failed to download HyClyint config".to_string());
+        }
+    };
 
+    let response = response.text().await.unwrap();
     let remote_config: hyclyint_config::Root = serde_json::from_str(&response).unwrap();
 
     println!("Downloading HyClyint v{}", remote_config.hyclyint_version);
@@ -171,12 +217,18 @@ pub async fn download_mods(config: &config::Config, app: &AppHandle) {
     let hyclyint_path =
         mods_directory.join(format!("hyclyint-{}.jar", remote_config.hyclyint_version));
 
-    let response = reqwest::get(hyclyint_url)
-        .await
-        .unwrap()
-        .bytes()
-        .await
-        .unwrap();
+    let response = match reqwest::get(hyclyint_url).await {
+        Ok(response) => response,
+        Err(_) => {
+            println!(
+                "Failed to download HyClyint v{}",
+                remote_config.hyclyint_version
+            );
+            return Err("Failed to download HyClyint".to_string());
+        }
+    };
+
+    let response = response.bytes().await.unwrap();
     fs::write(hyclyint_path, response).unwrap();
     println!(
         "Downloaded HyClyint v{}. Downloading required mods!",
@@ -189,16 +241,19 @@ pub async fn download_mods(config: &config::Config, app: &AppHandle) {
     println!("Total mods: {}", length);
 
     for required_mod in remote_config.required_mods {
-        let modrinth_response = reqwest::get(format!(
+        let modrinth_response = match reqwest::get(format!(
             "{}project/{}/version",
             MODRINTH_API, required_mod.name
         ))
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
+        .await {
+            Ok(response) => response,
+            Err(_) => {
+                println!("Failed to download mod: {}. {}/{}", required_mod.name, i, length);
+                return Err("Failed to download mod info".to_string());
+            }
+        };
 
+        let modrinth_response = modrinth_response.text().await.unwrap();
         let modrinth_response: modrinth_version::Root =
             serde_json::from_str(&modrinth_response).unwrap();
 
@@ -223,7 +278,15 @@ pub async fn download_mods(config: &config::Config, app: &AppHandle) {
         }
 
         println!("Downloading mod: {}. {}/{}", required_mod.name, i, length);
-        let response = reqwest::get(mod_url).await.unwrap().bytes().await.unwrap();
+        let response = match reqwest::get(mod_url).await {
+            Ok(response) => response,
+            Err(_) => {
+                println!("Failed to download mod: {}. {}/{}", required_mod.name, i, length);
+                return Err("Failed to download mod".to_string());
+            }
+        };
+
+        let response = response.bytes().await.unwrap();
         fs::write(mod_path, response).unwrap();
 
         println!("Downloaded mod: {}. {}/{}", required_mod.name, i, length);
@@ -236,9 +299,14 @@ pub async fn download_mods(config: &config::Config, app: &AppHandle) {
     }
 
     println!("Downloaded {} of out {} mods", i, length);
+
+    Ok(())
 }
 
-pub async fn download_assets_minecraft(config: &config::Config, app: &AppHandle) {
+pub async fn download_assets_minecraft(
+    config: &config::Config,
+    app: &AppHandle,
+) -> Result<(), String> {
     let version_manifest_path = directory::get_versions_directory().join("version_manifest.json");
     let version_manifest = fs::read_to_string(version_manifest_path).unwrap();
     let version_manifest: version_manifest::Root = serde_json::from_str(&version_manifest).unwrap();
@@ -260,15 +328,18 @@ pub async fn download_assets_minecraft(config: &config::Config, app: &AppHandle)
         version_json.asset_index.id, selected_version.id
     );
     let client = reqwest::Client::new();
-    let response = client
-        .get(&version_json.asset_index.url)
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
+    let response = match client.get(&version_json.asset_index.url).send().await {
+        Ok(response) => response,
+        Err(_) => {
+            println!(
+                "Failed to download asset index for version {}",
+                selected_version.id
+            );
+            return Err("Failed to download asset index".to_string());
+        }
+    };
 
+    let response = response.text().await.unwrap();
     println!("Downloaded asset index for version {}", selected_version.id);
 
     let asset_index_path = directory::get_assets_indexes_directory()
@@ -302,8 +373,18 @@ pub async fn download_assets_minecraft(config: &config::Config, app: &AppHandle)
                 let path = object_path.clone();
 
                 let handle = tokio::spawn(async move {
-                    let response = reqwest::get(url).await.unwrap().bytes().await.unwrap();
+                    let response = match reqwest::get(url).await {
+                        Ok(response) => response,
+                        Err(_) => {
+                            println!("Failed to download asset {}/{}: {}", i, length, key);
+                            return Err("Failed to download asset".to_string());
+                        }
+                    };
+
+                    let response = response.bytes().await.unwrap();
                     fs::write(path, response).unwrap();
+
+                    Ok(())
                 });
 
                 handles.push(handle);
@@ -320,14 +401,22 @@ pub async fn download_assets_minecraft(config: &config::Config, app: &AppHandle)
         }
 
         for handle in handles {
-            handle.await.unwrap();
+            match handle.await {
+                Ok(_) => {}
+                Err(_) => {
+                    println!("Failed to download asset");
+                    return Err("Failed to download asset".to_string());
+                }
+            }
         }
 
         println!("Downloaded {}/{} assets", i, length);
     }
+
+    Ok(())
 }
 
-pub async fn download_libraries(config: &config::Config, app: &AppHandle) {
+pub async fn download_libraries(config: &config::Config, app: &AppHandle) -> Result<(), String> {
     let selected_version = config.selected_version.clone();
 
     let version_directory = directory::get_version_directory(&selected_version);
@@ -360,12 +449,15 @@ pub async fn download_libraries(config: &config::Config, app: &AppHandle) {
         if !library_path.exists() {
             println!("Downloading library: {}", library.name);
 
-            let response = reqwest::get(library_url)
-                .await
-                .unwrap()
-                .bytes()
-                .await
-                .unwrap();
+            let response = match reqwest::get(library_url).await {
+                Ok(response) => response,
+                Err(_) => {
+                    println!("Failed to download library: {}", library.name);
+                    return Err("Failed to download library".to_string());
+                }
+            };
+
+            let response = response.bytes().await.unwrap();
             fs::write(library_path, response).unwrap();
         } else {
             println!("Skipping library: {}", library.name);
@@ -378,9 +470,14 @@ pub async fn download_libraries(config: &config::Config, app: &AppHandle) {
         .unwrap();
         i += 1;
     }
+
+    Ok(())
 }
 
-pub async fn download_libraries_fabric(config: &config::Config, app: &AppHandle) {
+pub async fn download_libraries_fabric(
+    config: &config::Config,
+    app: &AppHandle,
+) -> Result<(), String> {
     let selected_version = config.selected_version.clone();
 
     let version_file = directory::get_version_directory(&selected_version)
@@ -425,12 +522,15 @@ pub async fn download_libraries_fabric(config: &config::Config, app: &AppHandle)
         if !library_path.exists() {
             println!("Downloading library: {} from {}", library.name, library_url);
 
-            let response = reqwest::get(library_url)
-                .await
-                .unwrap()
-                .bytes()
-                .await
-                .unwrap();
+            let response = match reqwest::get(library_url).await {
+                Ok(response) => response,
+                Err(_) => {
+                    println!("Failed to download library: {}", library.name);
+                    return Err("Failed to download library".to_string());
+                }
+            };
+
+            let response = response.bytes().await.unwrap();
             fs::write(library_path, response).unwrap();
         } else {
             println!("Skipping library: {}", library.name);
@@ -443,9 +543,14 @@ pub async fn download_libraries_fabric(config: &config::Config, app: &AppHandle)
         .unwrap();
         i += 1;
     }
+
+    Ok(())
 }
 
-pub async fn download_minecraft_jar(config: &config::Config, app: &AppHandle) {
+pub async fn download_minecraft_jar(
+    config: &config::Config,
+    app: &AppHandle,
+) -> Result<(), String> {
     let versions_directory = directory::get_versions_directory();
 
     let selected_version = config.selected_version.clone();
@@ -465,7 +570,7 @@ pub async fn download_minecraft_jar(config: &config::Config, app: &AppHandle) {
             "Minecraft jar for version {} already exists",
             selected_version
         );
-        return;
+        return Ok(());
     }
 
     println!(
@@ -480,21 +585,25 @@ pub async fn download_minecraft_jar(config: &config::Config, app: &AppHandle) {
     .unwrap();
 
     let client = reqwest::Client::new();
-    let response = client
-        .get(&version_json.downloads.client.url)
-        .send()
-        .await
-        .unwrap()
-        .bytes()
-        .await
-        .unwrap();
+    let response = match client.get(&version_json.downloads.client.url).send().await {
+        Ok(response) => response,
+        Err(_) => {
+            println!(
+                "Failed to download Minecraft jar for version {}",
+                selected_version
+            );
+            return Err("Failed to download Minecraft jar".to_string());
+        }
+    };
 
+    let response = response.bytes().await.unwrap();
     fs::write(jar_path, response).unwrap();
 
     println!("Downloaded Minecraft jar for version {}", selected_version);
+    Ok(())
 }
 
-pub async fn download_runtime_gamma(app: &AppHandle) {
+pub async fn download_runtime_gamma(app: &AppHandle) -> Result<(), String> {
     let runtime_directory = directory::get_runtime_directory();
     let runtime_meta_path = runtime_directory.join("runtime_meta.json");
 
@@ -619,10 +728,19 @@ pub async fn download_runtime_gamma(app: &AppHandle) {
                 let file_url = file.downloads.unwrap().raw.unwrap().url.unwrap().clone();
 
                 let handle = tokio::spawn(async move {
-                    let response = reqwest::get(file_url).await.unwrap().bytes().await.unwrap();
+                    let response = match reqwest::get(file_url).await {
+                        Ok(response) => response,
+                        Err(_) => {
+                            println!("Failed to download file: {}", path);
+                            return Err("Failed to download file".to_string());
+                        }
+                    };
+
+                    let response = response.bytes().await.unwrap();
                     fs::write(file_path, response).unwrap();
 
                     println!("Downloaded file: {}", path);
+                    Ok(())
                 });
 
                 handles.push(handle);
@@ -639,16 +757,31 @@ pub async fn download_runtime_gamma(app: &AppHandle) {
         }
 
         for handle in handles {
-            handle.await.unwrap();
+            match handle.await {
+                Ok(_) => {}
+                Err(_) => {
+                    println!("Failed to download file");
+                    return Err("Failed to download file".to_string());
+                }
+            }
         }
 
         println!("Downloaded {}/{} files", i, length);
     }
+
+    Ok(())
 }
 
 pub async fn init(app: &AppHandle) {
     // Update the config
-    update_hyclyint_config(app).await;
+    match update_hyclyint_config(app).await {
+        Ok(_) => {}
+        Err(e) => {
+            println!("Error: {}", e);
+            app.emit_all("update-failed", "Failed to update HyClyint config").unwrap();
+            return;
+        }
+    };
 
     // check if the current token is valid
     let mut config = config::SHARED_CONFIG.lock().await;
@@ -681,11 +814,45 @@ pub async fn init(app: &AppHandle) {
 
     // Download the Minecraft version manifest
     println!("Updating manifests");
-    download_minecraft_version_manifest().await;
-    download_fabric_meta().await;
-    download_minecraft_version(&config).await;
-    download_fabric_version(&config).await;
-    download_runtime_meta().await;
+    match download_minecraft_version_manifest().await {
+        Ok(_) => {}
+        Err(_) => {
+            app.emit_all("update-failed", "Failed to update Minecraft version manifest").unwrap();
+            return;
+        }
+    };
+
+    match download_fabric_meta().await {
+        Ok(_) => {}
+        Err(_) => {
+            app.emit_all("update-failed", "Failed to update Fabric meta").unwrap();
+            return;
+        }
+    };
+
+    match download_minecraft_version(&config).await {
+        Ok(_) => {}
+        Err(_) => {
+            app.emit_all("update-failed", "Failed to update Minecraft version").unwrap();
+            return;
+        }
+    };
+
+    match download_fabric_version(&config).await {
+        Ok(_) => {}
+        Err(_) => {
+            app.emit_all("update-failed", "Failed to update Fabric version").unwrap();
+            return;
+        }
+    };
+
+    match download_runtime_meta().await {
+        Ok(_) => {}
+        Err(_) => {
+            app.emit_all("update-failed", "Failed to update runtime meta").unwrap();
+            return;
+        }
+    };
 
     println!("HyLauncher initialized");
 }

@@ -152,20 +152,59 @@ pub async fn launch_client(app: AppHandle, window: Window) -> Result<(), String>
     println!("Launching version: {}", selected_version);
 
     println!("Downloading runtime!");
-    downloader::download_runtime_gamma(&app).await;
+    match downloader::download_runtime_gamma(&app).await {
+        Ok(_) => {}
+        Err(_) => {
+            app.emit_all("update-failed", "Failed to download runtime").unwrap();
+            return Err("Failed to download runtime".to_string());
+        }
+    };
 
     println!("Downloading assets!");
-    downloader::download_assets_minecraft(&config, &app).await;
+    match downloader::download_assets_minecraft(&config, &app).await {
+        Ok(_) => {}
+        Err(_) => {
+            app.emit_all("update-failed", "Failed to download assets").unwrap();
+            return Err("Failed to download assets".to_string());
+        }
+    };
 
     println!("Downloading libraries!");
-    downloader::download_libraries(&config, &app).await;
-    downloader::download_libraries_fabric(&config, &app).await;
+    match downloader::download_libraries(&config, &app).await {
+        Ok(_) => {}
+        Err(_) => {
+            app.emit_all("update-failed", "Failed to download libraries").unwrap();
+            return Err("Failed to download libraries".to_string());
+        }
+    };
+
+    match downloader::download_libraries_fabric(&config, &app).await {
+        Ok(_) => {}
+        Err(_) => {
+            app.emit_all("update-failed", "Failed to download fabric libraries").unwrap();
+            return Err("Failed to download fabric libraries".to_string());
+        }
+    
+    };
 
     println!("Downloading mods!");
-    downloader::download_mods(&config, &app).await;
+    match downloader::download_mods(&config, &app).await {
+        Ok(_) => {}
+        Err(_) => {
+            app.emit_all("update-failed", "Failed to download mods").unwrap();
+            return Err("Failed to download mods".to_string());
+        }
+    
+    };
 
     println!("Downloading jar!");
-    downloader::download_minecraft_jar(&config, &app).await;
+    match downloader::download_minecraft_jar(&config, &app).await {
+        Ok(_) => {}
+        Err(_) => {
+            app.emit_all("update-failed", "Failed to download jar").unwrap();
+            return Err("Failed to download jar".to_string());
+        }
+    };
 
     app.emit_all("update_progress", "Launching").unwrap();
     println!("Launching Minecraft!");
