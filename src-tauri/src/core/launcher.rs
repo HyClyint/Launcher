@@ -148,21 +148,27 @@ async fn get_process(
 pub async fn launch_client(app: AppHandle, window: Window) -> Result<(), String> {
     let config = config::SHARED_CONFIG.lock().await;
     let selected_version = config.selected_version.clone();
-    let java_path: String;
-
+    
     println!("Launching version: {}", selected_version);
 
     println!("Downloading runtime!");
-    match downloader::download_runtime_gamma(&app).await {
-        Ok(path) => {
-            java_path = path;
-        }
-        Err(_) => {
-            app.emit_all("update-failed", "Failed to download runtime")
-                .unwrap();
-            return Err("Failed to download runtime".to_string());
-        }
-    };
+    let java_path: String;
+
+    if std::env::consts::OS == "macos" {
+        println!("HyClyint won't use the downloaded runtime on MacOS, please install Java 21 manually");
+        java_path = "java".to_string();
+    } else {
+        match downloader::download_runtime_gamma(&app).await {
+            Ok(path) => {
+                java_path = path;
+            }
+            Err(_) => {
+                app.emit_all("update-failed", "Failed to download runtime")
+                    .unwrap();
+                return Err("Failed to download runtime".to_string());
+            }
+        };
+    }
 
     println!("Java executable at {}", java_path);
 

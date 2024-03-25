@@ -6,6 +6,7 @@ use futures::lock::Mutex;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
+use tauri::AppHandle;
 
 use crate::core::directory;
 

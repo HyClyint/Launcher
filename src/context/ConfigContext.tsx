@@ -33,6 +33,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
     const [updateInfo, setUpdateInfo] = useState<String>('');
     const [failed, setFailed] = useState(false);
     const [error, setError] = useState<String>('');
+    const [macosJavaWarning, setMacosJavaWarning] = useState(true);
     const [displayLoading, setDisplayLoading] = useState(true);
 
     useEffect(() => {
@@ -60,12 +61,17 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
             setError(event.payload);
         });
 
+        const macosJavaWarning = listen('macos-java-warning', () => {
+            setMacosJavaWarning(true);
+        });
+
         loadConfig();
 
         return () => {
             cancel.then((cancel) => cancel());
             cancelUpdate.then((cancel) => cancel());
             cancelFailed.then((cancel) => cancel());
+            macosJavaWarning.then((cancel) => cancel());
         };
     }, []);
 
@@ -104,11 +110,31 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
                         <DialogContent>
                             <h1 className='scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl text-center'>Something went wrong!</h1>
                             <p className='leading-7 [&:not(:first-child)]:mt-6'>
-                                An error occurred while downloading the update. Please join the discord server for more information.
-                                Please restart the launcher to try again.
+                                An error occurred while downloading the update. Please join the discord server for more information. Please restart the launcher
+                                to try again.
                             </p>
                             <p className='leading-7 [&:not(:first-child)]:mt-6'>{error}</p>
 
+                            <Button asChild>
+                                <a href='https://discord.gg/99zb4wvxzs' target='_blank' rel='noreferrer'>
+                                    Join Discord
+                                </a>
+                            </Button>
+                        </DialogContent>
+                    </Dialog>
+                    <Dialog open={macosJavaWarning} onOpenChange={setMacosJavaWarning}>
+                        <DialogContent>
+                            <h1 className='scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl text-center'>Still under heavy development</h1>
+                            <p className='leading-7 [&:not(:first-child)]:mt-6'>
+                                On macOS, you need to install Java 21. Please click the button below to download the recommended port of OpenJDK 21 for macOS.
+                                Please note that HyClyint is not fully supported on macOS. If you have any issues, please join the discord server and report the
+                                issue. Please ignore the warning if you have OpenJDK 21 installed. Thank you!
+                            </p>
+                            <Button asChild>
+                                <a href='https://www.azul.com/downloads/#downloads-table-zulu' target='_blank' rel='noreferrer'>
+                                    Download Java 21
+                                </a>
+                            </Button>
                             <Button asChild>
                                 <a href='https://discord.gg/99zb4wvxzs' target='_blank' rel='noreferrer'>
                                     Join Discord

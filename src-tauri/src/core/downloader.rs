@@ -794,6 +794,15 @@ pub async fn init(app: &AppHandle) {
         }
     };
 
+    // Warn macos users
+    if std::env::consts::OS == "macos" {
+        app.emit_all(
+            "macos-java-warning",
+            "HyClyint won't use the downloaded runtime on MacOS, please install Java 21 manually",
+        )
+        .unwrap();
+    }
+
     // check if the current token is valid
     let mut config = config::SHARED_CONFIG.lock().await;
     if config.is_logged_in && (!config.minecraft_token.is_empty() || !config.xbox_token.is_empty())
