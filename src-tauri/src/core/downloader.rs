@@ -276,8 +276,6 @@ pub async fn download_mods(config: &config::Config, app: &AppHandle) -> Result<(
         return Err("latest.json has an invalid jar name".to_string());
     }
 
-    println!("Downloading HyClyint {}", build.version);
-    let hyclyint_url = format!("{}{}", api::BACKEND_URL, build.url.trim_start_matches('/'));
     let hyclyint_path = mods_directory.join(&build.file);
 
     // Drop older HyClyint jars so two versions never load together.
@@ -290,25 +288,59 @@ pub async fn download_mods(config: &config::Config, app: &AppHandle) -> Result<(
         }
     }
 
-    let response = match reqwest::get(hyclyint_url).await {
-        Ok(response) => response,
-        Err(_) => {
-            println!("Failed to download HyClyint {}", build.version);
+    let expected_hash = build.sha256.to_lowercase();
+    let sha256_of = |bytes: &[u8]| format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(bytes));
+
+    // The same file name can be republished with different contents (snapshot
+    // builds), so compare hashes instead of trusting the name.
+    let up_to_date = !expected_hash.is_empty()
+        && fs::read(&hyclyint_path)
+            .map(|bytes| sha256_of(&bytes) == expected_hash)
+            .unwrap_or(false);
+
+    if up_to_date {
+        println!("HyClyint {} is up to date", build.version);
+    } else {
+        println!("Downloading HyClyint {}", build.version);
+
+        // The hash in the query string stops a CDN from serving an older copy
+        // that was cached under the same file name.
+        let hyclyint_url = format!(
+            "{}{}?h={}",
+            api::BACKEND_URL,
+            build.url.trim_start_matches('/'),
+            expected_hash
+        );
+
+        let response = match reqwest::get(hyclyint_url).await {
+            Ok(response) => response,
+            Err(_) => {
+                println!("Failed to download HyClyint {}", build.version);
+                return Err("Failed to download HyClyint".to_string());
+            }
+        };
+
+        if !response.status().is_success() {
+            println!(
+                "HyClyint {} download returned HTTP {}",
+                build.version,
+                response.status()
+            );
             return Err("Failed to download HyClyint".to_string());
         }
-    };
 
-    if !response.status().is_success() {
-        println!(
-            "HyClyint {} download returned HTTP {}",
-            build.version,
-            response.status()
-        );
-        return Err("Failed to download HyClyint".to_string());
+        let response = match response.bytes().await {
+            Ok(bytes) => bytes,
+            Err(_) => return Err("Failed to download HyClyint".to_string()),
+        };
+
+        if !expected_hash.is_empty() && sha256_of(&response) != expected_hash {
+            println!("HyClyint {} failed its checksum", build.version);
+            return Err("HyClyint download did not match its checksum, try again in a minute".to_string());
+        }
+
+        fs::write(&hyclyint_path, response).unwrap();
     }
-
-    let response = response.bytes().await.unwrap();
-    fs::write(hyclyint_path, response).unwrap();
     println!("Downloaded HyClyint {}. Downloading required mods!", build.version);
 
     let mut i = 0;

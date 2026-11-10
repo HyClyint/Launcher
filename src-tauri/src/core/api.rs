@@ -49,6 +49,9 @@ pub struct LatestBuild {
     /// Site-relative jar path, e.g. `/downloads/mods/hyclyint-0.1.2-BETA.jar`.
     #[serde(default)]
     pub url: String,
+    /// Hex SHA-256 of the jar, used to skip unchanged downloads and to verify new ones.
+    #[serde(default)]
+    pub sha256: String,
 }
 
 pub async fn fetch_latest_build() -> Result<LatestBuild, String> {
