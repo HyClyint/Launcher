@@ -21,6 +21,26 @@ const MINECRAFT_RUNTIME_META_DOWNLOAD_URL: &str = "https://launchermeta.mojang.c
 const FABRIC_META_DOWNLOAD_URL: &str = "https://meta.fabricmc.net/v2/versions/loader/";
 const MODRINTH_API: &str = "https://api.modrinth.com/v2/";
 
+/// Compares dotted numeric versions ("0.1.3" < "0.1.10"); ignores suffixes like "-BETA".
+fn is_older(current: &str, minimum: &str) -> bool {
+    fn parts(version: &str) -> Vec<u64> {
+        version
+            .split(|c| c == '-' || c == '+')
+            .next()
+            .unwrap_or("")
+            .split('.')
+            .map(|part| part.parse().unwrap_or(0))
+            .collect()
+    }
+
+    let (mut left, mut right) = (parts(current), parts(minimum));
+    let len = left.len().max(right.len());
+    left.resize(len, 0);
+    right.resize(len, 0);
+
+    left < right
+}
+
 pub async fn update_hyclyint_config(app: &AppHandle) -> Result<(), String> {
     let remote_config = match api::get_global_config(true).await {
         Ok(config) => {
@@ -73,7 +93,9 @@ pub async fn update_hyclyint_config(app: &AppHandle) -> Result<(), String> {
         .filter(|version| !version.is_empty())
         .unwrap_or_else(|| config.hylauncher_version.clone());
 
-    if version_string != expected_launcher_version {
+    // The backend value is a minimum: newer launchers are fine, and the Tauri
+    // updater (GitHub releases) is what tells people a newer build exists.
+    if is_older(&version_string, &expected_launcher_version) {
         app.emit_all("update-available", format!("Current launcher version: {} is outdated! Please update to version: {} to continue using HyClyint!", version_string, expected_launcher_version)).unwrap();
     }
 
@@ -233,28 +255,53 @@ pub async fn download_mods(config: &config::Config, app: &AppHandle) -> Result<(
         }
     };
 
-    let hyclyint_version = remote_config
-        .hyclyint_version
-        .clone()
-        .filter(|version| !version.is_empty())
-        .unwrap_or_else(|| config.hyclyint_version.clone());
+    // latest.json names the newest published jar, so the launcher does not
+    // have to guess file names from the config's hyclyint_version.
+    let build = match api::fetch_latest_build().await {
+        Ok(build) if !build.file.is_empty() && !build.url.is_empty() => build,
+        Ok(_) => return Err("latest.json does not name a HyClyint jar".to_string()),
+        Err(error) => {
+            println!("Failed to load latest.json: {}", error);
+            return Err("Failed to download HyClyint".to_string());
+        }
+    };
 
-    println!("Downloading HyClyint v{}", hyclyint_version);
-    let hyclyint_url = format!("{}downloads/hyclyint-{}.jar", api::BACKEND_URL, hyclyint_version);
-    let hyclyint_path = mods_directory.join(format!("hyclyint-{}.jar", hyclyint_version));
+    // The file name becomes a path, so keep it to a plain jar name.
+    let plain_name = build.file.ends_with(".jar")
+        && build
+            .file
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_');
+    if !plain_name {
+        return Err("latest.json has an invalid jar name".to_string());
+    }
+
+    println!("Downloading HyClyint {}", build.version);
+    let hyclyint_url = format!("{}{}", api::BACKEND_URL, build.url.trim_start_matches('/'));
+    let hyclyint_path = mods_directory.join(&build.file);
+
+    // Drop older HyClyint jars so two versions never load together.
+    if let Ok(entries) = fs::read_dir(&mods_directory) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with("hyclyint-") && name.ends_with(".jar") && name != build.file {
+                let _ = fs::remove_file(entry.path());
+            }
+        }
+    }
 
     let response = match reqwest::get(hyclyint_url).await {
         Ok(response) => response,
         Err(_) => {
-            println!("Failed to download HyClyint v{}", hyclyint_version);
+            println!("Failed to download HyClyint {}", build.version);
             return Err("Failed to download HyClyint".to_string());
         }
     };
 
     if !response.status().is_success() {
         println!(
-            "HyClyint v{} download returned HTTP {}",
-            hyclyint_version,
+            "HyClyint {} download returned HTTP {}",
+            build.version,
             response.status()
         );
         return Err("Failed to download HyClyint".to_string());
@@ -262,10 +309,7 @@ pub async fn download_mods(config: &config::Config, app: &AppHandle) -> Result<(
 
     let response = response.bytes().await.unwrap();
     fs::write(hyclyint_path, response).unwrap();
-    println!(
-        "Downloaded HyClyint v{}. Downloading required mods!",
-        hyclyint_version
-    );
+    println!("Downloaded HyClyint {}. Downloading required mods!", build.version);
 
     let mut i = 0;
     let length = remote_config.required_mods.len();

@@ -43,6 +43,12 @@ pub struct LatestBuild {
     pub minecraft_version: String,
     #[serde(default)]
     pub channel: String,
+    /// Jar file name, e.g. `hyclyint-0.1.2-BETA.jar`.
+    #[serde(default)]
+    pub file: String,
+    /// Site-relative jar path, e.g. `/downloads/mods/hyclyint-0.1.2-BETA.jar`.
+    #[serde(default)]
+    pub url: String,
 }
 
 pub async fn fetch_latest_build() -> Result<LatestBuild, String> {
@@ -91,10 +97,6 @@ pub async fn get_global_config(refresh: bool) -> Result<GlobalConfig, String> {
     *cached = Some(config.clone());
 
     Ok(config)
-}
-
-pub async fn store_global_config(config: GlobalConfig) {
-    *CACHED_CONFIG.lock().await = Some(config);
 }
 
 pub async fn is_whitelisted(username: &str) -> Result<WhitelistStatus, String> {
