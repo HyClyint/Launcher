@@ -9,7 +9,7 @@ use super::{
     api, directory,
     json::{
         fabric_meta, fabric_version_json, minecraft_asset_index, minecraft_version_json,
-        modrinth_version, mojang_runtime_all_json, mojang_runtime_gamma_meta_json,
+        modrinth_version, mojang_runtime_gamma_meta_json,
         version_manifest,
     },
 };
@@ -691,14 +691,28 @@ pub async fn download_minecraft_jar(
     Ok(())
 }
 
-pub async fn download_runtime_gamma(app: &AppHandle) -> Result<String, String> {
+/// The Java runtime component the game version asks for (e.g. "java-runtime-gamma"
+/// for Java 17-21, "java-runtime-epsilon" for Java 25), read from its version json.
+fn runtime_component(version: &str) -> String {
+    let path = directory::get_version_directory(version).join(format!("{}.json", version));
+
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|json| json["javaVersion"]["component"].as_str().map(str::to_string))
+        .unwrap_or_else(|| "java-runtime-gamma".to_string())
+}
+
+/// Downloads the Java runtime the selected game version needs and returns the
+/// path of its java executable.
+pub async fn download_runtime(app: &AppHandle, game_version: &str) -> Result<String, String> {
     let runtime_directory = directory::get_runtime_directory();
     let runtime_meta_path = runtime_directory.join("runtime_meta.json");
 
     let mut java_executable: String = "".to_string();
 
     let runtime_meta = fs::read_to_string(runtime_meta_path).unwrap();
-    let runtime_meta: mojang_runtime_all_json::Root = serde_json::from_str(&runtime_meta).unwrap();
+    let runtime_meta: serde_json::Value = serde_json::from_str(&runtime_meta).unwrap();
 
     // os and archetecture based on the current system
     let os = match std::env::consts::OS {
@@ -715,30 +729,37 @@ pub async fn download_runtime_gamma(app: &AppHandle) -> Result<String, String> {
         _ => panic!("Unsupported architecture"),
     };
 
-    let selected_runtime;
+    let platform = match (os, arch) {
+        ("windows", "arm64") => "windows-arm64",
+        ("windows", "x64") => "windows-x64",
+        ("windows", "x86") => "windows-x86",
+        ("linux", "x64") => "linux",
+        ("mac-os", "x64") => "mac-os",
+        ("mac-os", "arm64") => "mac-os-arm64",
+        _ => panic!("Unsupported architecture! Using default runtime"),
+    };
 
-    if os == "windows" && arch == "arm64" {
-        selected_runtime = runtime_meta.windows_arm64;
-    } else if os == "windows" && arch == "x64" {
-        selected_runtime = runtime_meta.windows_x64;
-    } else if os == "windows" && arch == "x86" {
-        selected_runtime = runtime_meta.windows_x86;
-    } else if os == "linux" && arch == "x64" {
-        selected_runtime = runtime_meta.linux;
-    } else if os == "mac-os" && arch == "x64" {
-        selected_runtime = runtime_meta.mac_os;
-    } else if os == "mac-os" && arch == "arm64" {
-        selected_runtime = runtime_meta.mac_os_arm64;
+    let component = runtime_component(game_version);
+    println!("Using Java runtime {}", component);
+
+    // Each runtime keeps its own manifest and folder so switching Minecraft
+    // versions never reuses the wrong Java. gamma keeps its original paths.
+    let (manifest_name, folder_name) = if component == "java-runtime-gamma" {
+        ("selected_runtime_manifest.json".to_string(), "jre".to_string())
     } else {
-        panic!("Unsupported architecture! Using default runtime");
-    }
+        (
+            format!("selected_runtime_manifest_{}.json", component),
+            format!("jre-{}", component),
+        )
+    };
 
-    let selected_runtime_manifest_file =
-        directory::get_runtime_directory().join("selected_runtime_manifest.json");
+    let selected_runtime_manifest_file = directory::get_runtime_directory().join(manifest_name);
 
     if !selected_runtime_manifest_file.exists() {
-        let selected_runtime_manifest_url =
-            selected_runtime.java_runtime_gamma[0].manifest.url.clone();
+        let selected_runtime_manifest_url = runtime_meta[platform][&component][0]["manifest"]["url"]
+            .as_str()
+            .ok_or_else(|| format!("No {} runtime is published for {}", component, platform))?
+            .to_string();
         let selected_runtime_manifest = reqwest::get(selected_runtime_manifest_url)
             .await
             .unwrap()
@@ -757,7 +778,7 @@ pub async fn download_runtime_gamma(app: &AppHandle) -> Result<String, String> {
     let selected_runtime_manifest: mojang_runtime_gamma_meta_json::Root =
         serde_json::from_str(&selected_runtime_manifest).unwrap();
 
-    let runtime_download_dir = directory::get_runtime_directory().join("jre");
+    let runtime_download_dir = directory::get_runtime_directory().join(folder_name);
 
     if !runtime_download_dir.exists() {
         fs::create_dir(&runtime_download_dir).unwrap();

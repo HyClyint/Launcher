@@ -19,7 +19,6 @@ mod core {
         pub mod minecraft_asset_index;
         pub mod minecraft_version_json;
         pub mod modrinth_version;
-        pub mod mojang_runtime_all_json;
         pub mod mojang_runtime_gamma_meta_json;
         pub mod version_manifest;
     }

@@ -159,6 +159,24 @@ pub async fn launch_client(app: AppHandle, window: Window) -> Result<(), String>
     
     println!("Launching version: {}", selected_version);
 
+    // The version json files are only fetched at startup, so a version picked
+    // afterwards would have none and the later steps would fail.
+    let version_directory = directory::get_version_directory(&selected_version);
+    if !version_directory.join(format!("{}.json", selected_version)).exists() {
+        if downloader::download_minecraft_version(&config).await.is_err() {
+            app.emit_all("update-failed", "Failed to download the Minecraft version")
+                .unwrap();
+            return Err("Failed to download the Minecraft version".to_string());
+        }
+    }
+    if !version_directory.join(format!("{}-fabric.json", selected_version)).exists() {
+        if downloader::download_fabric_version(&config).await.is_err() {
+            app.emit_all("update-failed", "Failed to download the Fabric version")
+                .unwrap();
+            return Err("Failed to download the Fabric version".to_string());
+        }
+    }
+
     println!("Downloading runtime!");
     let java_path: String;
 
@@ -166,7 +184,7 @@ pub async fn launch_client(app: AppHandle, window: Window) -> Result<(), String>
         println!("HyClyint won't use the downloaded runtime on MacOS, please install Java 21 manually");
         java_path = "java".to_string();
     } else {
-        match downloader::download_runtime_gamma(&app).await {
+        match downloader::download_runtime(&app, &selected_version).await {
             Ok(path) => {
                 java_path = path;
             }
