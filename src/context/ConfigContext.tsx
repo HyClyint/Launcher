@@ -1,150 +1,187 @@
-import Loading from '@/components/Loading';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import Modal from '@/components/Modal';
+import Splash from '@/components/Splash';
 import { tauri } from '@tauri-apps/api';
 import { listen } from '@tauri-apps/api/event';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
-type Config = {
+export type Profile = {
+    id: string;
+    name: string;
+    game_version: string;
+};
+
+export type Config = {
     is_logged_in: boolean;
-    username: String;
-    selected_version: String;
+    username: string;
+    uuid?: string;
+    minecraft_token?: string; // only checked for presence, never displayed
+    selected_version: string;
+    profiles: Profile[];
+    selected_profile: string;
+};
+
+export type LaunchState = {
+    running: boolean; // a launch (download + game session) is in progress
+    status: string; // human readable phase
+    progress: number | null; // 0-100 when the phase reports a percentage
+    playing: boolean; // the game window has been started
 };
 
 type ConfigContextType = {
     config: Config;
-    setConfig: React.Dispatch<React.SetStateAction<Config>>;
+    /** The profile the next launch uses. */
+    profile: Profile;
+    launch: LaunchState;
+    startLaunch: () => Promise<void>;
 };
+
+export const DISCORD = 'https://discord.gg/99zb4wvxzs';
+const IDLE: LaunchState = { running: false, status: '', progress: null, playing: false };
 
 const ConfigContext = createContext<ConfigContextType>({} as ConfigContextType);
 
 export function useConfig() {
-    return useContext(ConfigContext) as ConfigContextType;
+    return useContext(ConfigContext);
+}
+
+function Link({ href, children, primary }: { href: string; children: React.ReactNode; primary?: boolean }) {
+    return (
+        <a href={href} target='_blank' rel='noreferrer' className={primary ? 'btn-primary' : 'btn-ghost'}>
+            {children}
+        </a>
+    );
 }
 
 export function ConfigProvider({ children }: { children: React.ReactNode }) {
-    const [config, setConfig] = useState<Config>({
-        is_logged_in: false,
-        username: '',
-        selected_version: '1.20.4',
-    });
+    const [config, setConfig] = useState<Config>({ is_logged_in: false, username: '', selected_version: '', profiles: [], selected_profile: '' });
+    const [launch, setLaunch] = useState<LaunchState>(IDLE);
     const [loading, setLoading] = useState(true);
-    const [updateAvailable, setUpdateAvailable] = useState(false);
-    const [updateInfo, setUpdateInfo] = useState<String>('');
-    const [failed, setFailed] = useState(false);
-    const [error, setError] = useState<String>('');
-    const [macosJavaWarning, setMacosJavaWarning] = useState(true);
-    const [displayLoading, setDisplayLoading] = useState(true);
+    const [showSplash, setShowSplash] = useState(true);
+    const [updateInfo, setUpdateInfo] = useState<string | null>(null);
+    const [failure, setFailure] = useState<string | null>(null);
+    const [authError, setAuthError] = useState<string | null>(null);
+    const [macWarning, setMacWarning] = useState(() => /Mac/i.test(navigator.userAgent));
+    const launching = useRef(false);
 
     useEffect(() => {
-        async function loadConfig() {
-            const config: Config = await tauri.invoke('get_config');
-            setConfig(config);
+        const unlisten = [
+            listen<Config>('config-updated', (e) => setConfig(e.payload)),
+            listen<string>('update-available', (e) => setUpdateInfo(e.payload)),
+            listen<string>('update-failed', (e) => {
+                setFailure(e.payload);
+                setLaunch(IDLE);
+            }),
+            listen<string>('auth-error', (e) => setAuthError(e.payload)),
+            // The backend emits both spellings depending on the phase.
+            ...['update-progress', 'update_progress'].map((name) =>
+                listen<string>(name, (e) => {
+                    const text = e.payload;
+                    const pct = text.match(/(\d+(?:\.\d+)?)%/);
+                    setLaunch((s) => ({
+                        ...s,
+                        running: true,
+                        status: text,
+                        progress: pct ? Math.min(100, Number(pct[1])) : null,
+                        playing: s.playing || text === 'Launching',
+                    }));
+                }),
+            ),
+            listen('game-closed', () => setLaunch(IDLE)),
+        ];
 
-            await tauri.invoke('initialize');
+        (async () => {
+            try {
+                setConfig(await tauri.invoke<Config>('get_config'));
+                await tauri.invoke('initialize');
+            } finally {
+                setLoading(false);
+            }
+        })();
 
-            setLoading(false);
-        }
-
-        const cancel = listen<Config>('config-updated', (event) => {
-            setConfig(event.payload);
-            console.log('config updated');
-        });
-
-        const cancelUpdate = listen<String>('update-available', (event) => {
-            setUpdateAvailable(true);
-            setUpdateInfo(event.payload);
-        });
-
-        const cancelFailed = listen<String>('update-failed', (event) => {
-            setFailed(true);
-            setError(event.payload);
-        });
-
-        const macosJavaWarning = listen('macos-java-warning', () => {
-            setMacosJavaWarning(true);
-        });
-
-        loadConfig();
-
-        return () => {
-            cancel.then((cancel) => cancel());
-            cancelUpdate.then((cancel) => cancel());
-            cancelFailed.then((cancel) => cancel());
-            macosJavaWarning.then((cancel) => cancel());
-        };
+        return () => unlisten.forEach((u) => u.then((f) => f()));
     }, []);
 
     useEffect(() => {
-        if (!loading) {
-            const timeout = setTimeout(() => {
-                setDisplayLoading(false);
-            }, 500);
-            return () => clearTimeout(timeout);
-        } else {
-            setDisplayLoading(true);
-        }
+        if (loading) return;
+        const t = setTimeout(() => setShowSplash(false), 400);
+        return () => clearTimeout(t);
     }, [loading]);
 
+    const startLaunch = useCallback(async () => {
+        if (launching.current) return;
+        launching.current = true;
+        setLaunch({ running: true, status: 'Preparing…', progress: null, playing: false });
+        try {
+            await tauri.invoke('launch_client');
+        } catch (error) {
+            console.error(error);
+        } finally {
+            launching.current = false;
+            setLaunch(IDLE);
+        }
+    }, []);
+
+    const profile = config.profiles.find((p) => p.id === config.selected_profile) ??
+        config.profiles[0] ?? { id: '', name: 'Default', game_version: config.selected_version };
+
     return (
-        <ConfigContext.Provider value={{ config, setConfig }}>
-            {
-                <>
-                    {children}
-                    <Dialog open={updateAvailable}>
-                        <DialogContent>
-                            <h1 className='scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl text-center'>Update Available</h1>
-                            <p className='leading-7 [&:not(:first-child)]:mt-6'>
-                                A new update is available. Please join the discord server for more information.
-                            </p>
-                            <p className='leading-7 [&:not(:first-child)]:mt-6'>{updateInfo}</p>
+        <ConfigContext.Provider value={{ config, profile, launch, startLaunch }}>
+            {children}
 
-                            <Button asChild>
-                                <a href='https://discord.gg/99zb4wvxzs' target='_blank' rel='noreferrer'>
-                                    Join Discord
-                                </a>
-                            </Button>
-                        </DialogContent>
-                    </Dialog>
-                    <Dialog open={failed}>
-                        <DialogContent>
-                            <h1 className='scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl text-center'>Something went wrong!</h1>
-                            <p className='leading-7 [&:not(:first-child)]:mt-6'>
-                                An error occurred while downloading the update. Please join the discord server for more information. Please restart the launcher
-                                to try again.
-                            </p>
-                            <p className='leading-7 [&:not(:first-child)]:mt-6'>{error}</p>
+            <Modal open={updateInfo !== null} title='Update available'>
+                <p className='text-sm leading-relaxed text-ink-soft'>
+                    A new version of the launcher is required to keep playing. Grab it from our Discord.
+                </p>
+                {updateInfo && <p className='mt-3 rounded-lg bg-black/30 p-3 text-xs text-ink-mute'>{updateInfo}</p>}
+                <div className='mt-5 flex'>
+                    <Link href={DISCORD} primary>
+                        Open Discord
+                    </Link>
+                </div>
+            </Modal>
 
-                            <Button asChild>
-                                <a href='https://discord.gg/99zb4wvxzs' target='_blank' rel='noreferrer'>
-                                    Join Discord
-                                </a>
-                            </Button>
-                        </DialogContent>
-                    </Dialog>
-                    <Dialog open={macosJavaWarning} onOpenChange={setMacosJavaWarning}>
-                        <DialogContent>
-                            <h1 className='scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl text-center'>Still under heavy development</h1>
-                            <p className='leading-7 [&:not(:first-child)]:mt-6'>
-                                On macOS, you need to install Java 21. Please click the button below to download the recommended port of OpenJDK 21 for macOS.
-                                Please note that HyClyint is not fully supported on macOS. If you have any issues, please join the discord server and report the
-                                issue. Please ignore the warning if you have OpenJDK 21 installed. Thank you!
-                            </p>
-                            <Button asChild>
-                                <a href='https://www.azul.com/downloads/#downloads-table-zulu' target='_blank' rel='noreferrer'>
-                                    Download Java 21
-                                </a>
-                            </Button>
-                            <Button asChild>
-                                <a href='https://discord.gg/99zb4wvxzs' target='_blank' rel='noreferrer'>
-                                    Join Discord
-                                </a>
-                            </Button>
-                        </DialogContent>
-                    </Dialog>
-                </>
-            }
-            {displayLoading && <Loading loading={loading} />}
+            <Modal open={failure !== null} onClose={() => setFailure(null)} title='Something went wrong'>
+                <p className='text-sm leading-relaxed text-ink-soft'>
+                    {failure}. Check your connection and try again. If it keeps happening, let us know on Discord.
+                </p>
+                <div className='mt-5 flex gap-2'>
+                    <button className='btn-ghost' onClick={() => setFailure(null)}>
+                        Dismiss
+                    </button>
+                    <Link href={DISCORD} primary>
+                        Get help
+                    </Link>
+                </div>
+            </Modal>
+
+            <Modal open={authError !== null} onClose={() => setAuthError(null)} title='Access denied'>
+                <p className='text-sm leading-relaxed text-ink-soft'>{authError}</p>
+                <p className='mt-3 text-xs text-ink-mute'>Think this is a mistake? Open a ticket on Discord.</p>
+                <div className='mt-5 flex gap-2'>
+                    <button className='btn-ghost' onClick={() => setAuthError(null)}>
+                        Close
+                    </button>
+                    <Link href={DISCORD} primary>
+                        Open ticket
+                    </Link>
+                </div>
+            </Modal>
+
+            <Modal open={macWarning} onClose={() => setMacWarning(false)} title='Java 21 required on macOS'>
+                <p className='text-sm leading-relaxed text-ink-soft'>
+                    macOS support is still in development. Install Java 21 yourself. You can skip this if you already have OpenJDK 21.
+                </p>
+                <div className='mt-5 flex gap-2'>
+                    <button className='btn-ghost' onClick={() => setMacWarning(false)}>
+                        I have it
+                    </button>
+                    <Link href='https://www.azul.com/downloads/#downloads-table-zulu' primary>
+                        Download Java 21
+                    </Link>
+                </div>
+            </Modal>
+
+            <Splash visible={showSplash} />
         </ConfigContext.Provider>
     );
 }

@@ -1,15 +1,16 @@
 use std::fs;
+use std::path::PathBuf;
 
 use tauri::{AppHandle, Manager};
 
 use crate::{auth, config, util};
 
 use super::{
-    directory,
+    api, directory,
     json::{
-        fabric_meta, fabric_version_json, hyclyint_config, minecraft_asset_index,
-        minecraft_version_json, modrinth_version, mojang_runtime_all_json,
-        mojang_runtime_gamma_meta_json, version_manifest,
+        fabric_meta, fabric_version_json, minecraft_asset_index, minecraft_version_json,
+        modrinth_version, mojang_runtime_all_json, mojang_runtime_gamma_meta_json,
+        version_manifest,
     },
 };
 
@@ -22,28 +23,58 @@ const HYCLYINT_URL: &str = "https://raw.githubusercontent.com/HyClyint/launcher-
 const MODRINTH_API: &str = "https://api.modrinth.com/v2/";
 
 pub async fn update_hyclyint_config(app: &AppHandle) -> Result<(), String> {
-    let hyclyint_config_url = format!("{}config.json", HYCLYINT_URL);
+    // The backend is the source of truth; the static GitHub config is only a
+    // fallback so a backend outage cannot stop the game from launching.
+    let remote_config = match api::get_global_config(true).await {
+        Ok(config) => {
+            println!("Loaded remote config from the HyClyint backend");
+            config
+        }
+        Err(error) => {
+            println!(
+                "HyClyint backend unavailable ({}), falling back to the static config",
+                error
+            );
 
-    let response = match reqwest::get(hyclyint_config_url).await {
-        Ok(response) => response,
-        Err(_) => {
-            println!("Failed to download HyClyint config");
-            return Err("Failed to download HyClyint config".to_string());
+            match api::fetch_static_config().await {
+                Ok(config) => {
+                    api::store_global_config(config.clone()).await;
+                    config
+                }
+                Err(error) => {
+                    println!("Failed to download HyClyint config: {}", error);
+                    return Err("Failed to download HyClyint config".to_string());
+                }
+            }
         }
     };
 
-    let response = response.text().await.unwrap();
-    let hyclyint_config: hyclyint_config::Root = serde_json::from_str(&response).unwrap();
-
     let mut config = config::SHARED_CONFIG.lock().await;
 
-    if config.fabric_version != hyclyint_config.fabric_version {
-        fs::remove_dir_all(directory::get_versions_directory()).unwrap();
-        fs::remove_dir_all(directory::get_libraries_directory()).unwrap();
+    let fabric_version = remote_config
+        .fabric_version
+        .clone()
+        .filter(|version| !version.is_empty())
+        .unwrap_or_else(|| config.fabric_version.clone());
+
+    let hyclyint_version = remote_config
+        .hyclyint_version
+        .clone()
+        .filter(|version| !version.is_empty())
+        .unwrap_or_else(|| config.hyclyint_version.clone());
+
+    if config.fabric_version != fabric_version {
+        remove_directory(directory::get_versions_directory());
+        remove_directory(directory::get_libraries_directory());
+
+        config.fabric_version = fabric_version;
     }
 
-    if config.hyclyint_version != hyclyint_config.hyclyint_version {
-        fs::remove_dir_all(directory::get_mods_directory()).unwrap();
+    if config.hyclyint_version != hyclyint_version {
+        // Only launcher-managed mods live here; user mods are in profiles.
+        remove_directory(directory::get_hyclyint_directory().join("required_mods"));
+
+        config.hyclyint_version = hyclyint_version;
     }
 
     let version_info = app.package_info().version.clone();
@@ -52,16 +83,29 @@ pub async fn update_hyclyint_config(app: &AppHandle) -> Result<(), String> {
         version_info.major, version_info.minor, version_info.patch
     );
 
-    if version_string != hyclyint_config.hyclyint_launcher_version {
-        app.emit_all("update-available", format!("Current launcher version: {} is outdated! Please update to version: {} to continue using HyClyint!", version_string, hyclyint_config.hyclyint_launcher_version)).unwrap();
-    }
+    let expected_launcher_version = remote_config
+        .hyclyint_launcher_version
+        .clone()
+        .filter(|version| !version.is_empty())
+        .unwrap_or_else(|| config.hylauncher_version.clone());
 
-    config.fabric_version = hyclyint_config.fabric_version;
-    config.hyclyint_version = hyclyint_config.hyclyint_version;
+    if version_string != expected_launcher_version {
+        app.emit_all("update-available", format!("Current launcher version: {} is outdated! Please update to version: {} to continue using HyClyint!", version_string, expected_launcher_version)).unwrap();
+    }
 
     config.save_config().unwrap();
 
     Ok(())
+}
+
+fn remove_directory(path: PathBuf) {
+    if !path.exists() {
+        return;
+    }
+
+    if let Err(error) = fs::remove_dir_all(&path) {
+        println!("Failed to remove {}: {}", path.display(), error);
+    }
 }
 
 pub async fn download_minecraft_version_manifest() -> Result<(), String> {
@@ -193,34 +237,32 @@ pub async fn download_fabric_version(config: &config::Config) -> Result<(), Stri
 pub async fn download_mods(config: &config::Config, app: &AppHandle) -> Result<(), String> {
     println!("Downloading mods");
 
-    let mods_directory = directory::get_mods_directory();
+    let mods_directory = directory::get_required_mods_directory(&config.selected_version);
 
-    let response = match reqwest::get(format!("{}{}", HYCLYINT_URL, "config.json")).await {
-        Ok(response) => response,
-        Err(_) => {
-            println!("Failed to download HyClyint config");
+    // Reuses the config cached by update_hyclyint_config; the jar itself is
+    // still fetched from the static file host.
+    let remote_config = match api::get_global_config(false).await {
+        Ok(config) => config,
+        Err(error) => {
+            println!("Failed to load the HyClyint config: {}", error);
             return Err("Failed to download HyClyint config".to_string());
         }
     };
 
-    let response = response.text().await.unwrap();
-    let remote_config: hyclyint_config::Root = serde_json::from_str(&response).unwrap();
+    let hyclyint_version = remote_config
+        .hyclyint_version
+        .clone()
+        .filter(|version| !version.is_empty())
+        .unwrap_or_else(|| config.hyclyint_version.clone());
 
-    println!("Downloading HyClyint v{}", remote_config.hyclyint_version);
-    let hyclyint_url = format!(
-        "{}/hyclyint-{}.jar",
-        HYCLYINT_URL, remote_config.hyclyint_version
-    );
-    let hyclyint_path =
-        mods_directory.join(format!("hyclyint-{}.jar", remote_config.hyclyint_version));
+    println!("Downloading HyClyint v{}", hyclyint_version);
+    let hyclyint_url = format!("{}hyclyint-{}.jar", HYCLYINT_URL, hyclyint_version);
+    let hyclyint_path = mods_directory.join(format!("hyclyint-{}.jar", hyclyint_version));
 
     let response = match reqwest::get(hyclyint_url).await {
         Ok(response) => response,
         Err(_) => {
-            println!(
-                "Failed to download HyClyint v{}",
-                remote_config.hyclyint_version
-            );
+            println!("Failed to download HyClyint v{}", hyclyint_version);
             return Err("Failed to download HyClyint".to_string());
         }
     };
@@ -229,7 +271,7 @@ pub async fn download_mods(config: &config::Config, app: &AppHandle) -> Result<(
     fs::write(hyclyint_path, response).unwrap();
     println!(
         "Downloaded HyClyint v{}. Downloading required mods!",
-        remote_config.hyclyint_version
+        hyclyint_version
     );
 
     let mut i = 0;
@@ -267,7 +309,12 @@ pub async fn download_mods(config: &config::Config, app: &AppHandle) -> Result<(
                         .game_versions
                         .contains(&config.selected_version.clone())
             })
-            .unwrap();
+            .ok_or_else(|| {
+                format!(
+                    "{} is not available for Minecraft {}",
+                    required_mod.name, config.selected_version
+                )
+            })?;
 
         let mod_path = mods_directory.join(selected_version.files[0].filename.clone());
         let mod_url = selected_version.files[0].url.clone();
@@ -852,7 +899,7 @@ pub async fn init(app: &AppHandle) {
     directory::get_runtime_directory();
     directory::get_assets_directory();
     directory::get_libraries_directory();
-    directory::get_mods_directory();
+    migrate_legacy_mods();
 
     // Download the Minecraft version manifest
     println!("Updating manifests");
@@ -905,4 +952,28 @@ pub async fn init(app: &AppHandle) {
     };
 
     println!("HyLauncher initialized");
+}
+
+/// Before profiles, launcher-managed mods were written to `<root>/mods`. They
+/// now load from `required_mods`, so leftovers would be loaded twice and make
+/// Fabric fail on duplicate mods. Runs once, guarded by a marker file, so it
+/// can never touch mods users add to the default profile later.
+fn migrate_legacy_mods() {
+    let root = directory::get_hyclyint_directory();
+    let marker = root.join(".profiles_migrated");
+    if marker.exists() {
+        return;
+    }
+
+    let legacy = root.join("mods");
+    if let Ok(entries) = fs::read_dir(&legacy) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().map_or(false, |ext| ext == "jar") {
+                let _ = fs::remove_file(path);
+            }
+        }
+    }
+
+    let _ = fs::write(marker, "");
 }

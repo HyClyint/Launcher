@@ -22,3 +22,21 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Rust / Tauri build output
+/src-tauri/target
+
+# Local tool caches (cargo and npm homes kept inside the repo)
+.cargo-home/
+.npm-cache/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Misc
+*.tsbuildinfo
+coverage
+Thumbs.db
+desktop.ini

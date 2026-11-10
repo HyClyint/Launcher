@@ -38,6 +38,10 @@ async fn get_process(
         .arg(format!("-Dio.netty.native.workdir={}", temp_path.to_str().unwrap()))
         .arg("-Dminecraft.launcher.brand=hylauncher")
         .arg("-Dminecraft.launcher.version=1.0.0")
+        .arg(format!(
+            "-Dfabric.addMods={}",
+            directory::get_required_mods_directory(selected_version).to_str().unwrap()
+        ))
         .arg("-cp")
         .arg(classpath)
         .arg("net.fabricmc.loader.impl.launch.knot.KnotClient")
@@ -46,7 +50,7 @@ async fn get_process(
         .arg("--version")
         .arg(selected_version.clone())
         .arg("--gameDir")
-        .arg(directory::get_hyclyint_directory().to_str().unwrap())
+        .arg(directory::get_profile_directory(&config.active_profile().id).to_str().unwrap())
         .arg("--assetsDir")
         .arg(directory::get_assets_directory().to_str().unwrap())
         .arg("--assetIndex")
@@ -73,7 +77,7 @@ async fn get_process(
         })
         .arg("--versionType")
         .arg("release")
-        .current_dir(directory::get_hyclyint_directory())
+        .current_dir(directory::get_profile_directory(&config.active_profile().id))
         .creation_flags(0x08000000)
         .spawn()
 }
@@ -105,6 +109,10 @@ async fn get_process(
         .arg(format!("-Dio.netty.native.workdir={}", temp_path.to_str().unwrap()))
         .arg("-Dminecraft.launcher.brand=hylauncher")
         .arg("-Dminecraft.launcher.version=1.0.0")
+        .arg(format!(
+            "-Dfabric.addMods={}",
+            directory::get_required_mods_directory(selected_version).to_str().unwrap()
+        ))
         .arg("-cp")
         .arg(classpath)
         .arg("net.fabricmc.loader.impl.launch.knot.KnotClient")
@@ -113,7 +121,7 @@ async fn get_process(
         .arg("--version")
         .arg(selected_version.clone())
         .arg("--gameDir")
-        .arg(directory::get_hyclyint_directory().to_str().unwrap())
+        .arg(directory::get_profile_directory(&config.active_profile().id).to_str().unwrap())
         .arg("--assetsDir")
         .arg(directory::get_assets_directory().to_str().unwrap())
         .arg("--assetIndex")
@@ -140,7 +148,7 @@ async fn get_process(
         })
         .arg("--versionType")
         .arg("release")
-        .current_dir(directory::get_hyclyint_directory())
+        .current_dir(directory::get_profile_directory(&config.active_profile().id))
         .spawn()
 }
 
@@ -204,10 +212,9 @@ pub async fn launch_client(app: AppHandle, window: Window) -> Result<(), String>
     println!("Downloading mods!");
     match downloader::download_mods(&config, &app).await {
         Ok(_) => {}
-        Err(_) => {
-            app.emit_all("update-failed", "Failed to download mods")
-                .unwrap();
-            return Err("Failed to download mods".to_string());
+        Err(error) => {
+            app.emit_all("update-failed", error.clone()).unwrap();
+            return Err(error);
         }
     };
 

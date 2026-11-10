@@ -50,16 +50,6 @@ pub fn get_libraries_directory() -> PathBuf {
     libraries_path
 }
 
-pub fn get_mods_directory() -> PathBuf {
-    let hyclyint_path = get_hyclyint_directory();
-    let mods_path = hyclyint_path.join("mods");
-    if !mods_path.exists() {
-        fs::create_dir(mods_path.clone()).unwrap();
-    }
-
-    mods_path
-}
-
 pub fn get_version_directory(version: &str) -> PathBuf {
     let versions_path = get_versions_directory();
     let version_path = versions_path.join(version);
@@ -93,6 +83,52 @@ pub fn get_asset_object_directory(hash: &str) -> PathBuf {
     }
 
     hash_path
+}
+
+fn safe_id(id: &str) -> String {
+    let cleaned: String = id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .collect();
+
+    // Never resolve to the parent folder itself.
+    if cleaned.is_empty() {
+        "_invalid".to_string()
+    } else {
+        cleaned
+    }
+}
+
+/// The game folder (`--gameDir`) of a profile. The default profile lives in
+/// the launcher root for backwards compatibility.
+pub fn get_profile_directory(id: &str) -> PathBuf {
+    let root = get_hyclyint_directory();
+    let path = if id == crate::config::DEFAULT_PROFILE_ID {
+        root
+    } else {
+        root.join("profiles").join(safe_id(id))
+    };
+    fs::create_dir_all(&path).unwrap();
+
+    path
+}
+
+pub fn get_profile_mods_directory(id: &str) -> PathBuf {
+    let path = get_profile_directory(id).join("mods");
+    fs::create_dir_all(&path).unwrap();
+
+    path
+}
+
+/// Launcher-managed mods (HyClyint + required mods) for one game version.
+/// Loaded through `-Dfabric.addMods`, so they never mix with user mods.
+pub fn get_required_mods_directory(version: &str) -> PathBuf {
+    let path = get_hyclyint_directory()
+        .join("required_mods")
+        .join(safe_id(&version.replace('.', "_")));
+    fs::create_dir_all(&path).unwrap();
+
+    path
 }
 
 #[tauri::command]

@@ -1,31 +1,30 @@
 import { useState } from 'react';
 import { useConfig } from '../context/ConfigContext';
-import Footer from './Footer';
-import Navbar from './Navbar';
-import NewsComponent from './NewsComponent';
-import Signin from './Signin';
-import SettingsComponent from './SettingsComponent';
+import ModsView from './ModsView';
+import PlayView from './PlayView';
+import SettingsView from './SettingsView';
+import Sidebar, { View } from './Sidebar';
+import SignIn from './SignIn';
 
-type Props = {};
-
-export default function App({}: Props) {
-    const [selected, setSelected] = useState('news');
+export default function App() {
     const { config } = useConfig();
+    const [view, setView] = useState<View>('play');
 
     return (
-        <div className='bg-minecraft dark bg-cover w-full h-screen overflow-hidden'>
-            {config.is_logged_in ? (
-                <>
-                    <Navbar setSelected={setSelected} />
-                    <div className='w-full h-[80%] p-10'>
-                        {selected === 'news' && <NewsComponent />}
-                        {selected === 'settings' && <SettingsComponent />}
+        <div className='relative h-full w-full overflow-hidden bg-scene bg-cover bg-center'>
+            <div className='absolute inset-0 bg-gradient-to-t from-surface/90 via-surface/40 to-surface/30' aria-hidden />
+            <div className='relative flex h-full'>
+                {config.is_logged_in ? (
+                    <>
+                        <Sidebar view={view} onChange={setView} />
+                        <main className='min-w-0 flex-1'>{view === 'play' ? <PlayView /> : view === 'mods' ? <ModsView /> : <SettingsView />}</main>
+                    </>
+                ) : (
+                    <div className='h-full w-full'>
+                        <SignIn />
                     </div>
-                    <Footer />
-                </>
-            ) : (
-                <Signin />
-            )}
+                )}
+            </div>
         </div>
     );
 }
