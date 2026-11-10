@@ -7,7 +7,7 @@
     },
     "package": {
         "productName": "HyClyint Beta",
-        "version": "0.1.1"
+        "version": "0.1.2"
     },
     "tauri": {
         "allowlist": {
@@ -30,6 +30,17 @@
                 "decorations": false
             }
         ],
+        "updater": {
+            "active": true,
+            "dialog": true,
+            "endpoints": [
+                "https://github.com/HyClyint/Launcher/releases/latest/download/latest.json"
+            ],
+            "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI4Mjc2OTg3QUMwNzc3NjEKUldSaGR3ZXNoMmtudU05MStBYmNtNTF0SDZORVdjSzFJU0xWOTNSRWViRkY1OVpHQytoTEtBUWQK",
+            "windows": {
+                "installMode": "passive"
+            }
+        },
         "security": {
             "csp": null
         },
