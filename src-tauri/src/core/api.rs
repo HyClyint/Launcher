@@ -8,11 +8,6 @@ use super::json::backend_config::{BanStatus, GlobalConfig, WhitelistStatus};
 /// Base URL of the HyClyint backend. The mod talks to the same host.
 pub const BACKEND_URL: &str = "https://hapi.askaloe.in/";
 
-/// Static fallback config, still hosted on GitHub. Used when the backend is
-/// unreachable so an outage cannot stop people from launching the game.
-pub const STATIC_CONFIG_URL: &str =
-    "https://raw.githubusercontent.com/HyClyint/launcher-data/main/config.json";
-
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 static CACHED_CONFIG: Lazy<Mutex<Option<GlobalConfig>>> = Lazy::new(|| Mutex::new(None));
@@ -41,6 +36,31 @@ async fn json<T: serde::de::DeserializeOwned>(url: &str) -> Result<T, String> {
         .map_err(|error| format!("{}: {}", url, error))
 }
 
+/// The newest published HyClyint build (`/downloads/latest.json`).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct LatestBuild {
+    pub version: String,
+    pub minecraft_version: String,
+    #[serde(default)]
+    pub channel: String,
+}
+
+pub async fn fetch_latest_build() -> Result<LatestBuild, String> {
+    let build = json::<LatestBuild>(&format!("{}downloads/latest.json", BACKEND_URL)).await?;
+
+    // Becomes a folder name and a version id, so keep it to plain version text.
+    let plain = !build.minecraft_version.is_empty()
+        && build
+            .minecraft_version
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-');
+    if !plain {
+        return Err("latest.json has an invalid minecraft_version".to_string());
+    }
+
+    Ok(build)
+}
+
 /// Minecraft versions the backend allows, newest first.
 pub async fn fetch_versions() -> Result<Vec<String>, String> {
     #[derive(serde::Deserialize)]
@@ -55,11 +75,6 @@ pub async fn fetch_versions() -> Result<Vec<String>, String> {
 
 pub async fn fetch_global_config() -> Result<GlobalConfig, String> {
     json::<GlobalConfig>(&format!("{}api/globalConfig", BACKEND_URL)).await
-}
-
-/// The pre-backend config file. It has no whitelist and no featured servers.
-pub async fn fetch_static_config() -> Result<GlobalConfig, String> {
-    json::<GlobalConfig>(STATIC_CONFIG_URL).await
 }
 
 /// Returns the remote config, fetching it once and caching it afterwards.

@@ -1,10 +1,11 @@
 import { Profile, useConfig } from '@/context/ConfigContext';
 import { tauri } from '@tauri-apps/api';
-import { ArrowLeft, Check, Loader2, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Check, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
 import Modal from './Modal';
 
 type GameVersion = { id: string; installed: boolean };
+type Featured = { name: string; game_version: string; hyclyint_version: string; channel: string; exists: boolean };
 
 type Props = {
     open: boolean;
@@ -17,13 +18,20 @@ export default function ProfilePicker({ open, onClose }: Props) {
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [toDelete, setToDelete] = useState<Profile | null>(null);
+    const [featured, setFeatured] = useState<Featured | null>(null);
 
     useEffect(() => {
         if (open) {
             setCreating(false);
             setError(null);
+            setFeatured(null);
+            // Optional extra: if the backend is unreachable we simply show nothing.
+            tauri
+                .invoke<Featured>('get_featured_profile')
+                .then(setFeatured)
+                .catch(() => {});
         }
-    }, [open]);
+    }, [open, config.profiles.length]);
 
     async function run(action: () => Promise<unknown>, done?: () => void) {
         setBusy(true);
@@ -56,6 +64,28 @@ export default function ProfilePicker({ open, onClose }: Props) {
                 />
             ) : (
                 <>
+                    {featured && !featured.exists && (
+                        <button
+                            disabled={busy}
+                            onClick={() =>
+                                run(async () => {
+                                    const id = await tauri.invoke<string>('create_profile', { name: featured.name, gameVersion: featured.game_version });
+                                    await tauri.invoke('select_profile', { id });
+                                }, onClose)
+                            }
+                            className='mb-3 flex w-full items-center gap-3 rounded-xl border border-accent/30 bg-accent/10 px-3 py-3 text-left transition hover:bg-accent/15 disabled:opacity-60'
+                        >
+                            <Sparkles size={18} className='shrink-0 text-accent' />
+                            <span className='min-w-0 flex-1'>
+                                <span className='block text-sm font-semibold'>
+                                    {featured.name}
+                                    {featured.channel && <span className='ml-2 rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-soft'>{featured.channel}</span>}
+                                </span>
+                                <span className='block text-xs text-ink-soft'>Newest HyClyint build · v{featured.hyclyint_version}</span>
+                            </span>
+                            <span className='text-xs font-medium text-accent'>Add</span>
+                        </button>
+                    )}
                     <div className='-mx-1 max-h-72 space-y-1 overflow-y-auto px-1' role='listbox' aria-label='Profiles'>
                         {config.profiles.map((p) => {
                             const active = p.id === config.selected_profile;

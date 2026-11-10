@@ -49,6 +49,7 @@ fn main() {
             auth::logout,
             config::get_config,
             config::get_versions,
+            config::get_featured_profile,
             core::profiles::create_profile,
             core::profiles::select_profile,
             core::profiles::rename_profile,

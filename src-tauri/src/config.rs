@@ -168,6 +168,14 @@ pub async fn get_versions() -> Result<Vec<GameVersion>, String> {
         }
     };
 
+    // The newest published HyClyint build may target a version the allow-list
+    // doesn't mention yet.
+    if let Ok(build) = crate::core::api::fetch_latest_build().await {
+        if !ids.contains(&build.minecraft_version) {
+            ids.insert(0, build.minecraft_version);
+        }
+    }
+
     if !ids.contains(&selected) {
         ids.push(selected);
     }
@@ -179,6 +187,37 @@ pub async fn get_versions() -> Result<Vec<GameVersion>, String> {
             id,
         })
         .collect())
+}
+
+#[derive(Serialize)]
+pub struct FeaturedProfile {
+    pub name: String,
+    pub game_version: String,
+    pub hyclyint_version: String,
+    pub channel: String,
+    /// A profile on this game version already exists.
+    pub exists: bool,
+}
+
+/// A ready-made profile for the newest HyClyint build, if the backend
+/// publishes one. Errors are not fatal for the UI; it just shows nothing.
+#[tauri::command]
+pub async fn get_featured_profile() -> Result<FeaturedProfile, String> {
+    let build = crate::core::api::fetch_latest_build().await?;
+    let exists = SHARED_CONFIG
+        .lock()
+        .await
+        .profiles
+        .iter()
+        .any(|profile| profile.game_version == build.minecraft_version);
+
+    Ok(FeaturedProfile {
+        name: format!("HyClyint {}", build.minecraft_version),
+        game_version: build.minecraft_version,
+        hyclyint_version: build.version,
+        channel: build.channel,
+        exists,
+    })
 }
 
 fn version_key(id: &str) -> Vec<u32> {

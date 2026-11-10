@@ -19,33 +19,17 @@ const MINECRAFT_VERSION_MANIFEST_URL: &str =
 const MINECRAFT_ASSET_DOWNLOAD_URL: &str = "https://resources.download.minecraft.net/";
 const MINECRAFT_RUNTIME_META_DOWNLOAD_URL: &str = "https://launchermeta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json";
 const FABRIC_META_DOWNLOAD_URL: &str = "https://meta.fabricmc.net/v2/versions/loader/";
-const HYCLYINT_URL: &str = "https://raw.githubusercontent.com/HyClyint/launcher-data/main/";
 const MODRINTH_API: &str = "https://api.modrinth.com/v2/";
 
 pub async fn update_hyclyint_config(app: &AppHandle) -> Result<(), String> {
-    // The backend is the source of truth; the static GitHub config is only a
-    // fallback so a backend outage cannot stop the game from launching.
     let remote_config = match api::get_global_config(true).await {
         Ok(config) => {
             println!("Loaded remote config from the HyClyint backend");
             config
         }
         Err(error) => {
-            println!(
-                "HyClyint backend unavailable ({}), falling back to the static config",
-                error
-            );
-
-            match api::fetch_static_config().await {
-                Ok(config) => {
-                    api::store_global_config(config.clone()).await;
-                    config
-                }
-                Err(error) => {
-                    println!("Failed to download HyClyint config: {}", error);
-                    return Err("Failed to download HyClyint config".to_string());
-                }
-            }
+            println!("Failed to download HyClyint config: {}", error);
+            return Err("Failed to download HyClyint config".to_string());
         }
     };
 
@@ -240,7 +224,7 @@ pub async fn download_mods(config: &config::Config, app: &AppHandle) -> Result<(
     let mods_directory = directory::get_required_mods_directory(&config.selected_version);
 
     // Reuses the config cached by update_hyclyint_config; the jar itself is
-    // still fetched from the static file host.
+    // downloaded from the backend's /downloads folder.
     let remote_config = match api::get_global_config(false).await {
         Ok(config) => config,
         Err(error) => {
@@ -256,7 +240,7 @@ pub async fn download_mods(config: &config::Config, app: &AppHandle) -> Result<(
         .unwrap_or_else(|| config.hyclyint_version.clone());
 
     println!("Downloading HyClyint v{}", hyclyint_version);
-    let hyclyint_url = format!("{}hyclyint-{}.jar", HYCLYINT_URL, hyclyint_version);
+    let hyclyint_url = format!("{}downloads/hyclyint-{}.jar", api::BACKEND_URL, hyclyint_version);
     let hyclyint_path = mods_directory.join(format!("hyclyint-{}.jar", hyclyint_version));
 
     let response = match reqwest::get(hyclyint_url).await {
@@ -266,6 +250,15 @@ pub async fn download_mods(config: &config::Config, app: &AppHandle) -> Result<(
             return Err("Failed to download HyClyint".to_string());
         }
     };
+
+    if !response.status().is_success() {
+        println!(
+            "HyClyint v{} download returned HTTP {}",
+            hyclyint_version,
+            response.status()
+        );
+        return Err("Failed to download HyClyint".to_string());
+    }
 
     let response = response.bytes().await.unwrap();
     fs::write(hyclyint_path, response).unwrap();
