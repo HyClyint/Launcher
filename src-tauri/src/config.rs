@@ -45,7 +45,7 @@ impl Config {
             selected_version: String::from("1.20.4"),
             fabric_version: String::from("0.15.7"),
             hyclyint_version: String::from("1.0.0"),
-            hylauncher_version: String::from("0.1.1-BETA"),
+            hylauncher_version: String::from("0.0.0"),
             username: String::new(),
             uuid: String::new(),
             xbox_token: String::new(),
