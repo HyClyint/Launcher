@@ -798,6 +798,7 @@ pub async fn download_runtime(app: &AppHandle, game_version: &str) -> Result<Str
         while handles.len() < max_threads && i < length {
             let files = selected_runtime_manifest.files.clone();
             let (path, file) = files.into_iter().nth(i).unwrap();
+            let executable = file.executable.unwrap_or(false);
 
             if file.root_type.clone().unwrap() == "directory" {
                 let mut file_path = runtime_download_dir.clone();
@@ -852,7 +853,16 @@ pub async fn download_runtime(app: &AppHandle, game_version: &str) -> Result<Str
                     };
 
                     let response = response.bytes().await.unwrap();
-                    fs::write(file_path, response).unwrap();
+                    fs::write(&file_path, response).unwrap();
+
+                    // Downloaded files are not executable by default on Linux/macOS.
+                    #[cfg(unix)]
+                    if executable {
+                        use std::os::unix::fs::PermissionsExt;
+                        let _ = fs::set_permissions(&file_path, fs::Permissions::from_mode(0o755));
+                    }
+                    #[cfg(not(unix))]
+                    let _ = executable;
 
                     println!("Downloaded file: {}", path);
                     Ok(())
@@ -903,7 +913,7 @@ pub async fn init(app: &AppHandle) {
     if std::env::consts::OS == "macos" {
         app.emit_all(
             "macos-java-warning",
-            "HyClyint won't use the downloaded runtime on MacOS, please install Java 21 manually",
+            "HyClyint won't use the downloaded runtime on MacOS, install the Java version your Minecraft version needs (Java 25 for 26.x, Java 21 for 1.20.5-1.21.x)",
         )
         .unwrap();
     }

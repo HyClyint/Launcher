@@ -167,16 +167,16 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
                 </div>
             </Modal>
 
-            <Modal open={macWarning} onClose={() => setMacWarning(false)} title='Java 21 required on macOS'>
+            <Modal open={macWarning} onClose={() => setMacWarning(false)} title='Java required on macOS'>
                 <p className='text-sm leading-relaxed text-ink-soft'>
-                    macOS support is still in development. Install Java 21 yourself. You can skip this if you already have OpenJDK 21.
+                    macOS support is still in development. Install the Java version your Minecraft version needs yourself: Java 25 for 26.x, Java 21 for 1.20.5 to 1.21.x. You can skip this if you already have it.
                 </p>
                 <div className='mt-5 flex gap-2'>
                     <button className='btn-ghost' onClick={() => setMacWarning(false)}>
                         I have it
                     </button>
                     <Link href='https://www.azul.com/downloads/#downloads-table-zulu' primary>
-                        Download Java 21
+                        Download Java
                     </Link>
                 </div>
             </Modal>

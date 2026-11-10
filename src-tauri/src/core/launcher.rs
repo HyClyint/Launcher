@@ -181,7 +181,7 @@ pub async fn launch_client(app: AppHandle, window: Window) -> Result<(), String>
     let java_path: String;
 
     if std::env::consts::OS == "macos" {
-        println!("HyClyint won't use the downloaded runtime on MacOS, please install Java 21 manually");
+        println!("HyClyint won't use the downloaded runtime on MacOS, install the Java version your Minecraft version needs (Java 25 for 26.x, Java 21 for 1.20.5-1.21.x)");
         java_path = "java".to_string();
     } else {
         match downloader::download_runtime(&app, &selected_version).await {
@@ -267,7 +267,7 @@ pub async fn launch_client(app: AppHandle, window: Window) -> Result<(), String>
     let mut classpath = String::new();
     for library in libraries {
         classpath.push_str(&library.to_str().unwrap());
-        classpath.push_str(";");
+        classpath.push_str(if cfg!(windows) { ";" } else { ":" });
     }
 
     // Adds {selected_version}.jar into the classpath
