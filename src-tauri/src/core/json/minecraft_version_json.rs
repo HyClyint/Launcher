@@ -100,9 +100,9 @@ pub struct AssetIndex {
 #[derive(Serialize, Deserialize)]
 pub struct RootDownloads {
     pub client: ClientMappingsClass,
-    pub client_mappings: ClientMappingsClass,
+    pub client_mappings: Option<ClientMappingsClass>,
     pub server: ClientMappingsClass,
-    pub server_mappings: ClientMappingsClass,
+    pub server_mappings: Option<ClientMappingsClass>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -154,4 +154,30 @@ pub struct LoggingClient {
     pub file: AssetIndex,
     #[serde(rename = "type")]
     pub client_type: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Root;
+
+    #[test]
+    fn parses_installed_versions() {
+        let home = dirs::home_dir().unwrap().join(".hyclyint").join("versions");
+        for entry in std::fs::read_dir(home).unwrap().flatten() {
+            let id = entry.file_name().to_string_lossy().to_string();
+            let path = entry.path().join(format!("{}.json", id));
+            if let Ok(text) = std::fs::read_to_string(&path) {
+                if let Err(error) = serde_json::from_str::<Root>(&text) {
+                    panic!("{} does not parse: {}", id, error);
+                }
+            }
+
+            let fabric = entry.path().join(format!("{}-fabric.json", id));
+            if let Ok(text) = std::fs::read_to_string(&fabric) {
+                if let Err(error) = serde_json::from_str::<crate::core::json::fabric_version_json::Root>(&text) {
+                    panic!("{}-fabric does not parse: {}", id, error);
+                }
+            }
+        }
+    }
 }
