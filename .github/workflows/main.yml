@@ -16,8 +16,6 @@ jobs:
         settings:
           - platform: 'macos-latest'
             args: '--target universal-apple-darwin'
-          - platform: 'ubuntu-22.04'
-            args: ''
           - platform: 'windows-latest'
             args: '--target x86_64-pc-windows-msvc'
 
@@ -34,12 +32,6 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
-
-      - name: install dependencies (ubuntu only)
-        if: matrix.settings.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gdk-3.0 libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: install frontend dependencies
         run: npm install # change this to npm or pnpm depending on which one you use
